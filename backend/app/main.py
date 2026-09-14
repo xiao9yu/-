@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from .api import auth
 from .core.exceptions import register_exception_handlers
 from .db import Base, engine
 
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="edu-agent-platform", lifespan=lifespan)
 register_exception_handlers(app)
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 
 @app.get("/api/health")
