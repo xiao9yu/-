@@ -1,5 +1,7 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
 """业务异常与全局异常处理器：所有接口返回结构化错误 JSON，前端不白屏。"""
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -20,4 +22,5 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
+        logging.exception("未处理异常: %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"detail": "服务器内部错误"})

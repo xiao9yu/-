@@ -12,8 +12,11 @@ def test_health(client):
     assert resp.json() == {"status": "ok"}
 
 
-def test_app_startup_lifespan():
+def test_app_startup_lifespan(tmp_path, monkeypatch):
     """回归测试：真实 lifespan 启动（建表）不能因 data/ 目录缺失而崩溃。"""
+    # 双保险隔离：conftest 已把 settings.db_url 指向会话临时目录；
+    # 再切 CWD，防止任何按 CWD 解析的路径写回 backend/data/
+    monkeypatch.chdir(tmp_path)
     with TestClient(app) as c:
         assert c.get("/api/health").json() == {"status": "ok"}
 
