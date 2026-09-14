@@ -36,7 +36,7 @@
 
 ---
 
-### Task A1: 后端骨架 + 配置 + 数据库 + 全局异常处理
+### Task 1: 后端骨架 + 配置 + 数据库 + 全局异常处理
 
 **Files:**
 - Create: `backend/requirements.txt`、`backend/pytest.ini`、`backend/app/__init__.py`、`backend/app/config.py`、`backend/app/db.py`、`backend/app/main.py`、`backend/app/core/__init__.py`、`backend/app/core/exceptions.py`
@@ -254,6 +254,7 @@ __pycache__/
 node_modules/
 frontend/dist/
 .DS_Store
+.superpowers/
 ```
 
 - [ ] **Step 3: 安装依赖**
@@ -274,7 +275,7 @@ git add -A && git commit -m "feat: 后端骨架+配置+数据库+全局异常处
 
 ---
 
-### Task A2: 用户模型 + 注册/登录/JWT 认证
+### Task 2: 用户模型 + 注册/登录/JWT 认证
 
 **Files:**
 - Create: `backend/app/models/__init__.py`、`backend/app/models/user.py`、`backend/app/core/security.py`、`backend/app/api/__init__.py`、`backend/app/api/deps.py`、`backend/app/api/auth.py`
@@ -535,7 +536,7 @@ git add -A && git commit -m "feat: 用户模型与JWT认证（工单16-20公共�
 
 ---
 
-### Task A3: LLM 网关（DeepSeek 统一封装）
+### Task 3: LLM 网关（DeepSeek 统一封装）
 
 **Files:**
 - Create: `backend/app/services/__init__.py`、`backend/app/services/llm_gateway.py`
@@ -821,7 +822,7 @@ git add -A && git commit -m "feat: LLM网关（DeepSeek统一封装，重试/JSO
 
 ---
 
-### Task A4: 文件服务（上传/下载/列表）
+### Task 4: 文件服务（上传/下载/列表）
 
 **Files:**
 - Create: `backend/app/models/file.py`、`backend/app/services/file_service.py`、`backend/app/api/files.py`
@@ -1078,7 +1079,7 @@ git add -A && git commit -m "feat: 文件服务（上传/下载/列表，类型�
 
 ---
 
-### Task A5: 文档解析管线（多模态：文本/表格/图片/公式）
+### Task 5: 文档解析管线（多模态：文本/表格/图片/公式）
 
 **Files:**
 - Create: `backend/app/services/parser/__init__.py`、`backend/app/services/parser/chunk.py`、`backend/app/services/parser/pdf_parser.py`、`backend/app/services/parser/office_parser.py`、`backend/app/services/parser/image_parser.py`
@@ -1492,7 +1493,7 @@ git add -A && git commit -m "feat: 文档解析管线（PDF/DOCX/PPTX/XLSX/图�
 
 ---
 
-### Task A6: Embedding 服务（bge-m3）
+### Task 6: Embedding 服务（bge-m3）
 
 **Files:**
 - Create: `backend/app/services/embeddings.py`
@@ -1576,7 +1577,7 @@ git add -A && git commit -m "feat: Embedding服务（本地bge-m3，懒加载单
 
 ---
 
-### Task A7: 向量库（接口 + FAISS 实现 + Milvus Lite 实现）
+### Task 7: 向量库（接口 + FAISS 实现 + Milvus Lite 实现）
 
 **Files:**
 - Create: `backend/app/services/vector_store.py`
@@ -1869,7 +1870,7 @@ git add -A && git commit -m "feat: 向量库抽象（Milvus Lite + FAISS 兜底�
 
 ---
 
-### Task A8: BM25 + 混合检索 + RRF 重排序
+### Task 8: BM25 + 混合检索 + RRF 重排序
 
 **Files:**
 - Create: `backend/app/services/rag.py`
@@ -2049,7 +2050,7 @@ git add -A && git commit -m "feat: BM25+向量混合检索与RRF重排序（工�
 
 ---
 
-### Task A9: RAG 问答组装（rag_ask + 引用溯源）
+### Task 9: RAG 问答组装（rag_ask + 引用溯源）
 
 **Files:**
 - Create: `backend/app/services/rag_ask.py`
@@ -2203,13 +2204,13 @@ git add -A && git commit -m "feat: RAG问答组装（检索编号+引用溯源�
 
 ---
 
-### Task A10: 前端骨架（Vue3 + Element Plus + 登录 + 布局）
+### Task 10: 前端骨架（Vue3 + Element Plus + 登录 + 布局）
 
 **Files:**
 - Create: `frontend/package.json`、`frontend/vite.config.ts`、`frontend/tsconfig.json`、`frontend/index.html`、`frontend/src/env.d.ts`、`frontend/src/main.ts`、`frontend/src/App.vue`、`frontend/src/router/index.ts`、`frontend/src/stores/auth.ts`、`frontend/src/api/http.ts`、`frontend/src/views/LoginView.vue`、`frontend/src/views/HomeView.vue`、`frontend/src/views/PlaceholderView.vue`
 
 **Interfaces:**
-- Consumes: 后端 `/api/auth/*`（Task A2）
+- Consumes: 后端 `/api/auth/*`（Task 2）
 - Produces: 前端路由 `/login`、`/`（Home，含四模块菜单占位）；`stores/auth.ts`（token/user/登录登出）；`api/http.ts`（axios 实例，自动带 token、统一错误提示、401 跳登录）。Plan B~E 直接在此骨架上加页面。
 
 - [ ] **Step 1: 创建前端文件**（内容如下）
@@ -2542,7 +2543,7 @@ git add -A && git commit -m "feat: 前端骨架（Vue3+Element Plus+登录+四�
 
 ---
 
-### Task A11: 工单 16 —— 教育智能体需求分析与软件架构设计文档
+### Task 11: 工单 16 —— 教育智能体需求分析与软件架构设计文档
 
 **Files:**
 - Create: `docs/工单16-教育智能体需求分析与软件架构设计.md`
@@ -2594,7 +2595,7 @@ git add docs/工单16-教育智能体需求分析与软件架构设计.md && git
 
 ---
 
-### Task A12: 演示数据 + 环境模板 + README（底座收尾）
+### Task 12: 演示数据 + 环境模板 + README（底座收尾）
 
 **Files:**
 - Create: `backend/scripts/seed_demo_data.py`、`backend/.env.example`、根目录 `README.md`
