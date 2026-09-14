@@ -1,7 +1,7 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
 """认证接口：注册/登录/当前用户。"""
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from ..core.exceptions import BizError
@@ -31,8 +31,7 @@ class UserOut(BaseModel):
     role: Role
     real_name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenOut(BaseModel):

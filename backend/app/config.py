@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     app_name: str = "edu-agent-platform"
-    secret_key: str = "dev-secret-change-me"
+    secret_key: str = "edu-agent-dev-secret-key-9f8e7d6c5b4a3210-change-me"
     access_token_expire_minutes: int = 60 * 24
     # DeepSeek
     deepseek_api_key: str = ""

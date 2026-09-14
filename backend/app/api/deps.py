@@ -20,9 +20,10 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="未登录")
     try:
         payload = decode_token(cred.credentials)
-    except pyjwt.PyJWTError:
+        user_id = int(payload["sub"])
+    except (pyjwt.PyJWTError, KeyError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
-    user = db.get(User, int(payload["sub"]))
+    user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="用户不存在")
     return user
