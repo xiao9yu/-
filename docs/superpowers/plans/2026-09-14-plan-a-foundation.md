@@ -125,7 +125,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "edu-agent-platform"
-    secret_key: str = "dev-secret-change-me"
+    secret_key: str = "edu-agent-dev-secret-key-9f8e7d6c5b4a3210-change-me"
     access_token_expire_minutes: int = 60 * 24
     # DeepSeek
     deepseek_api_key: str = ""
@@ -347,7 +347,7 @@ Expected: FAIL（ModuleNotFoundError: app.models.user）
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
 """用户模型：四种角色覆盖工单17(教师)/18(师生)/19(学生)/20(就业指导+教师)。"""
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -370,7 +370,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(200))
     role: Mapped[Role] = mapped_column(Enum(Role), default=Role.student)
     real_name: Mapped[str] = mapped_column(String(50), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 ```
 
 `backend/app/core/security.py`：
@@ -432,9 +432,11 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="未登录")
     try:
         payload = decode_token(cred.credentials)
-    except pyjwt.PyJWTError:
+        user_id = int(payload["sub"])
+    except (pyjwt.PyJWTError, KeyError, ValueError, TypeError):
+        # 坏签名/过期/缺失或非数字 sub 统一按 401 处理，避免 500
         raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
-    user = db.get(User, int(payload["sub"]))
+    user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="用户不存在")
     return user
@@ -446,7 +448,7 @@ def get_current_user(
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
 """认证接口：注册/登录/当前用户。"""
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from ..core.exceptions import BizError
@@ -471,13 +473,11 @@ class LoginIn(BaseModel):
 
 
 class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     username: str
     role: Role
     real_name: str
-
-    class Config:
-        from_attributes = True
 
 
 class TokenOut(BaseModel):
@@ -902,7 +902,7 @@ Expected: FAIL（ModuleNotFoundError: app.services.file_service）
 ```python
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
 """文件记录：所有上传的文档/图片/音频统一登记。"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -919,7 +919,7 @@ class FileRecord(Base):
     ext: Mapped[str] = mapped_column(String(20))
     size: Mapped[int] = mapped_column(Integer)
     owner_id: Mapped[int] = mapped_column(Integer, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 ```
 
 `backend/app/services/file_service.py`：
