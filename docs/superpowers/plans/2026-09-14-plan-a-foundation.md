@@ -1041,7 +1041,7 @@ def list_files(user: User = Depends(get_current_user), db: Session = Depends(get
 @router.get("/{file_id}/download")
 def download(file_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = db.get(FileRecord, file_id)
-    if record is None:
+    if record is None or record.owner_id != user.id:
         raise BizError(404, "文件不存在")
     path = get_file_path(record, settings.upload_dir)
     if not path.exists():
@@ -1069,7 +1069,7 @@ app.include_router(files.router, prefix="/api/files", tags=["files"])
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd backend && pytest tests/test_file_service.py -v`
-Expected: PASS（4 passed）
+Expected: PASS（5 passed）
 
 - [ ] **Step 5: 提交**
 
@@ -2753,7 +2753,7 @@ Expected: 打印"演示文件已生成：...data\demo"，账号创建成功；`b
 - [ ] **Step 4: 全量测试回归**
 
 Run: `cd backend && pytest -v`
-Expected: 全部 PASS（test_health 1 + test_auth 5 + test_llm_gateway 7 + test_file_service 4 + test_parser 7 + test_vector_store 4 + test_rag 4 + test_rag_ask 2 = 34 passed，smoke 自动跳过）
+Expected: 全部 PASS（test_health 1 + test_auth 5 + test_llm_gateway 7 + test_file_service 5 + test_parser 7 + test_vector_store 4 + test_rag 4 + test_rag_ask 2 = 35 passed，smoke 自动跳过）
 
 - [ ] **Step 5: 提交**
 
@@ -2765,7 +2765,7 @@ git add -A && git commit -m "feat: 演示数据脚本+环境模板+README（底�
 
 ## 完成标准（Plan A）
 
-- [ ] 后端 34 个测试全部通过；smoke（bge-m3/Milvus）可跑通或已配置 FAISS 兜底
+- [ ] 后端 35 个测试全部通过；smoke（bge-m3/Milvus）可跑通或已配置 FAISS 兜底
 - [ ] 登录注册闭环可用（curl + 浏览器验证）
 - [ ] 解析管线对 PDF/DOCX/PPTX/XLSX/图片产出多模态 Chunk（测试覆盖）
 - [ ] 混合检索 + RRF 重排 + rag_ask 引用溯源可用（测试覆盖）
