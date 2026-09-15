@@ -1931,8 +1931,6 @@ def test_rrf_fuse_dedup_and_rank():
 
 
 def test_hybrid_retrieve_merges_vector_and_bm25(tmp_path):
-    from app.services.embeddings import Embedder
-
     class FakeEmbedder:
         def embed_query(self, text):
             # 与 c1 向量相近
@@ -1947,11 +1945,13 @@ def test_hybrid_retrieve_merges_vector_and_bm25(tmp_path):
         metadatas=[{"chunk_id": "c1"}, {"chunk_id": "c2"}, {"chunk_id": "c3"}],
     )
     col = KBCollection(name="kb", chunks=_chunks())
-    hits = hybrid_retrieve("梯度下降", [col], top_k=2, vector_store=store, embedder=FakeEmbedder())
+    hits = hybrid_retrieve("计算机网络", [col], top_k=2, vector_store=store, embedder=FakeEmbedder())
     ids = [h.chunk.id for h in hits]
-    assert "c1" in ids  # 向量命中的 c1 必在前列
-    assert len(ids) >= 2   # BM25 也贡献了结果
+    assert "c1" in ids  # 向量命中：查询向量 [1,0,0] 的最近邻
+    assert "c3" in ids  # 仅 BM25 可命中：c3 向量与查询向量正交，但文本匹配"计算机网络"
 ```
+
+（评审修复：查询改为"计算机网络"，断言 BM25 独有命中 c3——原 brief 测试在删除 BM25 半程时依然通过，未能验证混合命题）
 
 - [ ] **Step 2: 运行测试确认失败**
 
