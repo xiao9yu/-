@@ -39,7 +39,7 @@ def list_files(user: User = Depends(get_current_user), db: Session = Depends(get
 @router.get("/{file_id}/download")
 def download(file_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = db.get(FileRecord, file_id)
-    if record is None:
+    if record is None or record.owner_id != user.id:
         raise BizError(404, "文件不存在")
     path = get_file_path(record, settings.upload_dir)
     if not path.exists():

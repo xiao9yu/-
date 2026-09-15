@@ -50,3 +50,41 @@ def test_delete_file_removes_disk(tmp_path, db):
     path = get_file_path(record, tmp_path)
     delete_file(record.id, upload_dir=tmp_path, db=db)
     assert not path.exists()
+
+
+def test_download_requires_ownership(client, tmp_path, monkeypatch):
+    """越权防护：用户不能下载他人文件（评审 Important 修复回归）。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+
+    def _reg(u):
+        return client.post(
+            "/api/auth/register",
+            json={"username": u, "password": "pass123456", "role": "student"},
+        )
+
+    def _token(u):
+        return client.post(
+            "/api/auth/login", json={"username": u, "password": "pass123456"}
+        ).json()["access_token"]
+
+    _reg("u1")
+    _reg("u2")
+    t1, t2 = _token("u1"), _token("u2")
+    up = client.post(
+        "/api/files/upload",
+        files={"file": ("a.txt", b"hello", "text/plain")},
+        headers={"Authorization": f"Bearer {t1}"},
+    )
+    assert up.status_code == 200
+    fid = up.json()["id"]
+    # 他人下载 → 404；本人下载 → 200
+    assert (
+        client.get(f"/api/files/{fid}/download", headers={"Authorization": f"Bearer {t2}"}).status_code
+        == 404
+    )
+    assert (
+        client.get(f"/api/files/{fid}/download", headers={"Authorization": f"Bearer {t1}"}).status_code
+        == 200
+    )
