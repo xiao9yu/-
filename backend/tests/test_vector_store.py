@@ -63,3 +63,41 @@ def test_milvus_lite_smoke(tmp_path):
     )
     hits = store.search("kb1", [1.0, 0.0, 0.0], top_k=1)
     assert hits[0].id == "a"
+
+
+def test_search_filter_returns_top_k_matches_beyond_nearest_neighbors(store):
+    """修复回归：过滤应在排序后仍返回满 top_k（而非先取近邻后过滤致空）。"""
+    store.create_collection("kb2", dim=3)
+    store.upsert(
+        "kb2",
+        ids=["a", "b", "c", "d"],
+        vectors=[[1.0, 0.0, 0.0], [0.9, 0.1, 0.0], [0.0, 1.0, 0.0], [0.0, 0.9, 0.1]],
+        metadatas=[
+            {"chunk_id": "c-a", "source": "x.pdf"},
+            {"chunk_id": "c-b", "source": "x.pdf"},
+            {"chunk_id": "c-c", "source": "y.pdf"},
+            {"chunk_id": "c-d", "source": "y.pdf"},
+        ],
+    )
+    # 查询向量最接近 c/d（y.pdf），但过滤要求 x.pdf：修复前近邻全被过滤 → 空；修复后应返回 a/b
+    hits = store.search("kb2", [0.0, 1.0, 0.0], top_k=2, filter_dict={"source": "x.pdf"})
+    assert len(hits) == 2
+    assert all(h.metadata["source"] == "x.pdf" for h in hits)
+
+
+def test_search_returns_metadata_copy(store):
+    """修复回归：返回的 metadata 是副本，调用方改动不污染存储。"""
+    _seed(store)
+    hits = store.search("kb1", [1.0, 0.0, 0.0], top_k=2)
+    hits[0].metadata["chunk_id"] = "hacked"
+    hits2 = store.search("kb1", [1.0, 0.0, 0.0], top_k=2)
+    assert hits2[0].metadata["chunk_id"] == "c-a"
+
+
+def test_milvus_expr_escapes_quotes():
+    """修复回归：过滤值中的双引号被转义，不能注入 and/or 绕过过滤。"""
+    from app.services.vector_store import MilvusVectorStore
+
+    expr = MilvusVectorStore._build_expr({"source": 'x" or 1==1 or "'})
+    assert expr == 'source == "x\\" or 1==1 or \\""'
+    assert MilvusVectorStore._build_expr({"a": "1", "b": "2"}) == 'a == "1" and b == "2"'

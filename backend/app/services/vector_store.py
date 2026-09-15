@@ -98,19 +98,22 @@ class FaissVectorStore(VectorStore):
             return []
         qv = np.array([query_vector], dtype="float32")
         self.faiss.normalize_L2(qv)
-        k = min(top_k, self.indexes[name].ntotal)
-        if k == 0:
+        ntotal = self.indexes[name].ntotal
+        if ntotal == 0:
             return []
+        # 有过滤条件时先全量排序再过滤，保证与 Milvus（先过滤后排序）语义一致
+        k = ntotal if filter_dict else min(top_k, ntotal)
         scores, indices = self.indexes[name].search(qv, k)
         hits = []
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0:
                 continue
-            meta = self.metas[name][idx]
+            # 返回副本，防止调用方改动污染存储
+            meta = dict(self.metas[name][idx])
             if filter_dict and any(str(meta.get(kk)) != str(vv) for kk, vv in filter_dict.items()):
                 continue
             hits.append(SearchHit(id=self.ids[name][idx], score=float(score), metadata=meta))
-        return hits
+        return hits[:top_k]
 
     def delete(self, name, ids):
         if name not in self.indexes:
@@ -152,7 +155,11 @@ class MilvusVectorStore(VectorStore):
     def _build_expr(filter_dict):
         if not filter_dict:
             return ""
-        return " and ".join(f'{k} == "{v}"' for k, v in filter_dict.items())
+        parts = []
+        for k, v in filter_dict.items():
+            sv = str(v).replace('"', '\\"')
+            parts.append(f'{k} == "{sv}"')
+        return " and ".join(parts)
 
     def search(self, name, query_vector, top_k, filter_dict=None):
         if not self.client.has_collection(name):
