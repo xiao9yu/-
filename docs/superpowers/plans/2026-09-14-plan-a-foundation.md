@@ -2073,6 +2073,8 @@ git add -A && git commit -m "feat: BM25+向量混合检索与RRF重排序（工�
 
 ```python
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
+import re
+
 from app.services.parser.chunk import Chunk
 from app.services.rag import KBCollection
 from app.services.rag_ask import build_answer_prompt, rag_ask
@@ -2093,6 +2095,9 @@ def _col():
     return KBCollection(name="kb", chunks=[
         Chunk(text="梯度下降通过沿负梯度方向迭代更新参数。", kind="text", source="教材.pdf", page=3, id="c1"),
         Chunk(text="房价预测案例：线性回归拟合房价。", kind="text", source="笔记.md", page=None, id="c2"),
+        # 第三块与查询无关，但必须存在：rank_bm25 的 IDF 在 2 篇语料、df=1 时恒为 0，
+        # 加上 BM25Index 只保留 score>0，2 篇语料下 BM25 永远召不回任何块（Task 8 测试同样用 3 篇）。
+        Chunk(text="计算机网络的七层模型。", kind="text", source="教材.pdf", page=8, id="c3"),
     ])
 
 
@@ -2126,7 +2131,39 @@ def test_rag_ask_returns_citations():
     assert result.citations  # 即使向量库为空，BM25 也应召回语料
     assert result.citations[0]["ref_no"] == 1
     assert "source" in result.citations[0] and "excerpt" in result.citations[0]
+
+
+def test_rag_ask_citations_align_with_truncated_prompt():
+    # 评审修复回归：max_chars 截断发生时，prompt 内编号必须与 citations 的 ref_no 严格一致。
+    # 语料 6 块 × 约 831 字符（含头部），5 块 4155 > 4000，必然在第 5 块截断（前 4 块 3324）。
+    # 每对相邻两块共享一个 df=2 的查询词：N=6 时 df=2 的词 IDF=log4.5-log2.5≈0.588>0，
+    # 6 块全部 BM25 score>0（df=3 时 IDF 恰为 0，df≥4 为负，只有 df=1/2 才为正且安全）。
+    filler = "内容" * 400  # 800 字符填充，凑足截断所需长度
+    chunks = [
+        Chunk(text=f"梯度下降。{filler}", kind="text", source="教材.pdf", page=1, id="c1"),
+        Chunk(text=f"梯度下降。{filler}", kind="text", source="教材.pdf", page=2, id="c2"),
+        Chunk(text=f"优化收敛。{filler}", kind="text", source="教材.pdf", page=3, id="c3"),
+        Chunk(text=f"优化收敛。{filler}", kind="text", source="教材.pdf", page=4, id="c4"),
+        Chunk(text=f"拟合迭代。{filler}", kind="text", source="教材.pdf", page=5, id="c5"),
+        Chunk(text=f"拟合迭代。{filler}", kind="text", source="教材.pdf", page=6, id="c6"),
+    ]
+    col = KBCollection(name="kb", chunks=chunks)
+    llm = FakeLLM()
+    result = rag_ask(
+        "梯度下降优化收敛拟合迭代", [col],
+        vector_store=FakeVS(), embedder=FakeEmbedder(), llm=llm,
+    )
+    assert result.citations  # BM25 至少召回 3 块（实际 6 块全部 score>0）
+    assert len(result.citations) < len(col.chunks)  # 超出 4000 预算，必然截断
+    ref_nos = [c["ref_no"] for c in result.citations]
+    assert ref_nos == list(range(1, len(ref_nos) + 1))  # 编号从 1 连续
+    prompt_numbers = {
+        int(m) for m in re.findall(r"\[(\d+)\] 来源", llm.calls[0][0]["content"])
+    }
+    assert prompt_numbers == set(ref_nos)  # prompt 内编号集合与 citations 严格对齐
 ```
+
+（评审修复：新增 test_rag_ask_citations_align_with_truncated_prompt——原实现截断只作用于 prompt，citations 由全部 hits 推导，截断时 prompt 编号 [1..k] 与 citations [1..n] 错位、引用溯源失真；_col() 语料同步为实际 3 块版本）
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -2155,16 +2192,26 @@ class RagAnswer:
     citations: list[dict] = field(default_factory=list)
 
 
-def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000) -> list[dict]:
-    """把检索结果编号拼进 system prompt，超出长度截断。"""
-    blocks, total = [], 0
+def _select_hits(hits: list[RagHit], max_chars: int) -> list[tuple[int, RagHit]]:
+    """按 max_chars 预算截断命中并编号，返回 (ref_no, hit) 列表。"""
+    selected: list[tuple[int, RagHit]] = []
+    total = 0
     for i, h in enumerate(hits, start=1):
         page = f" 第{h.chunk.page}页" if h.chunk.page is not None else ""
         block = f"[{i}] 来源:{h.chunk.source}{page} 类型:{h.chunk.kind}\n{h.chunk.text}"
         if total + len(block) > max_chars:
             break
-        blocks.append(block)
+        selected.append((i, h))
         total += len(block)
+    return selected
+
+
+def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000) -> list[dict]:
+    """把检索结果编号拼进 system prompt，超出长度截断。"""
+    blocks = []
+    for i, h in _select_hits(hits, max_chars):
+        page = f" 第{h.chunk.page}页" if h.chunk.page is not None else ""
+        blocks.append(f"[{i}] 来源:{h.chunk.source}{page} 类型:{h.chunk.kind}\n{h.chunk.text}")
     system = PROMPT_SYSTEM
     if blocks:
         system += "\n\n【检索资料】\n" + "\n\n".join(blocks)
@@ -2183,6 +2230,7 @@ def rag_ask(
 ) -> RagAnswer:
     """完整链路：混合检索 → 组装提示词 → LLM 生成 → 引用溯源。"""
     hits = hybrid_retrieve(question, collections, top_k, vector_store=vector_store, embedder=embedder)
+    selected = _select_hits(hits, 4000)  # 与 prompt 同一编号切片，截断后引用不越界
     messages = build_answer_prompt(question, hits)
     chat = llm or get_gateway()
     answer = chat.chat(messages)
@@ -2195,7 +2243,7 @@ def rag_ask(
             "excerpt": h.chunk.text[:200],
             "image_path": h.chunk.meta.get("image_path"),
         }
-        for i, h in enumerate(hits, start=1)
+        for i, h in selected
     ]
     return RagAnswer(answer=answer, citations=citations)
 ```
