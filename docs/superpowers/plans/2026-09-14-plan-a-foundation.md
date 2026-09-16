@@ -2423,10 +2423,21 @@ import http from '@/api/http'
 
 interface User { id: number; username: string; role: string; real_name: string }
 
+// 容错读取 localStorage 中的 user：存储值可能被手动编辑、写入截断或来自旧 schema，
+// 直接 JSON.parse 抛异常会导致 store 初始化失败；useAuthStore() 被路由守卫（router/index.ts）
+// 与 axios 拦截器（http.ts）调用，一旦抛出整个应用无法启动。解析失败时回退 null。
+function loadUserFromStorage(): User | null {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null') as User | null
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || '',
-    user: JSON.parse(localStorage.getItem('user') || 'null') as User | null
+    user: loadUserFromStorage()
   }),
   actions: {
     async login(username: string, password: string) {
@@ -2445,6 +2456,8 @@ export const useAuthStore = defineStore('auth', {
   }
 })
 ```
+
+（评审修复：user 的 localStorage 读取包进 loadUserFromStorage() try/catch——原实现直接 JSON.parse，存储值损坏（手动编辑/写入截断/schema 迁移）时 store 初始化抛异常，而 useAuthStore() 被路由守卫与 axios 拦截器调用，会导致整个应用无法启动；解析失败回退 null）
 
 `frontend/src/router/index.ts`：
 
