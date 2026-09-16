@@ -617,13 +617,16 @@ def db(tmp_path):
 
 @pytest.fixture
 def docx_path(tmp_path):
-    """含中文段落与表格的课程资源样例。"""
+    """含中文段落与表格的课程资源样例。
+    评审修复（Task9 先例）：段落+表格+段落 → 3 块——rank_bm25 0.2.2 在 N=2 语料中
+    IDF 恒 0（BM25 半程为空），且 FakeEmbedder 全等向量下 FAISS 同分顺序不确定，
+    首位断言会偶发失败；3 块时 BM25 分数 para1>para2>0=表格，首位确定。"""
     doc = Document()
     doc.add_paragraph("梯度下降是机器学习中最基础的优化算法，通过沿负梯度方向迭代更新参数。")
-    doc.add_paragraph("线性回归通过拟合直线描述特征与目标值的关系，常用于房价预测。")
     table = doc.add_table(rows=2, cols=2)
     table.cell(0, 0).text = "算法"; table.cell(0, 1).text = "场景"
     table.cell(1, 0).text = "线性回归"; table.cell(1, 1).text = "房价预测"
+    doc.add_paragraph("梯度下降在深度学习中被广泛使用。")
     path = tmp_path / "讲义.docx"
     doc.save(path)
     return path
@@ -728,7 +731,10 @@ def search_resources(course_id: int, query: str, upload_dir: Path | str, db: Ses
     for record in resources:
         path = get_file_path(record, upload_dir)
         if path.exists():
-            chunks.extend(parse_document(path))
+            parsed = parse_document(path)
+            for c in parsed:          # 评审修复：引用标注用用户上传的原始文件名（磁盘名为 uuid）
+                c.source = record.filename
+            chunks.extend(parsed)
     if not chunks:
         return []
     emb = embedder or get_embedder()
