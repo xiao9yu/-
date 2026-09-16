@@ -40,6 +40,16 @@ def test_register_duplicate_username_400(client):
     assert "已存在" in resp.json()["detail"]
 
 
+def test_register_admin_role_400(client):
+    """管理员角色不能自助注册，只能由演示数据脚本预置。"""
+    resp = client.post(
+        "/api/auth/register",
+        json={"username": "evil", "password": "pass123456", "role": "admin", "real_name": ""},
+    )
+    assert resp.status_code == 400
+    assert "管理员" in resp.json()["detail"]
+
+
 def test_login_wrong_password_401(client):
     _register(client)
     resp = client.post("/api/auth/login", json={"username": "stu1", "password": "wrong"})

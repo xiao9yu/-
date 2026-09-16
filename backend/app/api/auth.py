@@ -42,6 +42,9 @@ class TokenOut(BaseModel):
 
 @router.post("/register", response_model=UserOut)
 def register(data: RegisterIn, db: Session = Depends(get_db)):
+    # 管理员账号不能自助注册，只能由演示数据脚本预置（防权限提升）
+    if data.role == Role.admin:
+        raise BizError(400, "管理员账号不能自助注册，请联系管理员")
     if db.query(User).filter(User.username == data.username).first():
         raise BizError(400, "用户名已存在")
     user = User(
