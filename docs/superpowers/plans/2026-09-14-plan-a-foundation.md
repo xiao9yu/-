@@ -2744,7 +2744,7 @@ def make_demo_files() -> None:
     # 4) 教材 pdf
     pdf_doc = open_pdf()
     page = pdf_doc.new_page()
-    page.insert_text((72, 72), "人工智能导论：机器学习基础\n梯度下降通过迭代更新参数逼近最优解。")
+    page.insert_text((72, 72), "人工智能导论：机器学习基础\n梯度下降通过迭代更新参数逼近最优解。", fontname="china-s")
     pdf_doc.save(DEMO_DIR / "人工智能导论教材.pdf")
     pdf_doc.close()
     print("演示文件已生成：", DEMO_DIR)
@@ -2760,6 +2760,8 @@ if __name__ == "__main__":
     finally:
         db.close()
 ```
+
+（评审修复：PDF 生成指定 fontname="china-s"——原 brief 未指定字体，PyMuPDF 默认 helv 无中文字形，提取文本为乱码占位符，影响 Plan C 多模态 RAG 演示；先例见 Task 5 中文 PDF 测试）
 
 - [ ] **Step 2: 写环境模板与 README**
 
