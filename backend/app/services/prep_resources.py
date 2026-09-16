@@ -17,22 +17,6 @@ from ..services.rag import KBCollection, hybrid_retrieve
 from ..services.vector_store import FaissVectorStore
 
 
-class _StableStore:
-    """包装向量库：同分命中按插入顺序稳定排序。
-    FAISS 对同分命中的返回顺序不稳定（多线程堆排序），会随机影响 RRF 排名；
-    稳定为文档解析顺序后结果可复现。真实 embedding 下向量分几乎不会同分，
-    该包装只影响同分兜底路径，不影响正常检索语义。
-    """
-
-    def __init__(self, inner, order: dict[str, int]):
-        self._inner = inner
-        self._order = order
-
-    def search(self, name, query_vector, top_k, filter_dict=None):
-        hits = self._inner.search(name, query_vector, top_k, filter_dict=filter_dict)
-        return sorted(hits, key=lambda h: (-h.score, self._order.get(h.id, 0)))
-
-
 def add_resource(course_id: int, file: UploadFile, upload_dir: Path | str, db: Session):
     """上传课程资源文件：底座落盘 + course_files 登记。owner_id 记 0（课程资源不属个人）。"""
     record = save_upload(file, owner_id=0, upload_dir=upload_dir, db=db)
@@ -78,11 +62,8 @@ def search_resources(course_id: int, query: str, upload_dir: Path | str, db: Ses
             metadatas=[{"chunk_id": c.id, "source": c.source, "page": c.page} for c in chunks],
         )
         collection = KBCollection(name="course_res", chunks=chunks)
-        # 自建临时索引时包装稳定同分排序；调用方显式传入的 vector_store 保持原样
-        order = {c.id: i for i, c in enumerate(chunks)}
-        vs = store if vector_store is not None else _StableStore(store, order)
         hits = hybrid_retrieve(query, [collection], top_k=top_k,
-                               vector_store=vs, embedder=emb)
+                               vector_store=store, embedder=emb)
     return [
         {
             "chunk": h.chunk,

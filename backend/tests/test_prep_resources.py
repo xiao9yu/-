@@ -31,10 +31,10 @@ def docx_path(tmp_path):
     """含中文段落与表格的课程资源样例。"""
     doc = Document()
     doc.add_paragraph("梯度下降是机器学习中最基础的优化算法，通过沿负梯度方向迭代更新参数。")
-    doc.add_paragraph("线性回归通过拟合直线描述特征与目标值的关系，常用于房价预测。")
     table = doc.add_table(rows=2, cols=2)
     table.cell(0, 0).text = "算法"; table.cell(0, 1).text = "场景"
     table.cell(1, 0).text = "线性回归"; table.cell(1, 1).text = "房价预测"
+    doc.add_paragraph("梯度下降在深度学习中被广泛使用。")
     path = tmp_path / "讲义.docx"
     doc.save(path)
     return path
