@@ -332,7 +332,19 @@ def test_register_invalid_role_422(client):
         json={"username": "x", "password": "pass123456", "role": "boss", "real_name": ""},
     )
     assert resp.status_code == 422
+
+
+def test_register_admin_role_400(client):
+    """管理员角色不能自助注册，只能由演示数据脚本预置。"""
+    resp = client.post(
+        "/api/auth/register",
+        json={"username": "evil", "password": "pass123456", "role": "admin", "real_name": ""},
+    )
+    assert resp.status_code == 400
+    assert "管理员" in resp.json()["detail"]
 ```
+
+（评审修复：新增 test_register_admin_role_400——原 brief 未限制注册角色，任何匿名调用者可 POST /api/auth/register 携带 "role": "admin" 自封管理员，Plan B~E 增加管理员专属端点后即权限提升漏洞）
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -488,6 +500,9 @@ class TokenOut(BaseModel):
 
 @router.post("/register", response_model=UserOut)
 def register(data: RegisterIn, db: Session = Depends(get_db)):
+    # 管理员账号不能自助注册，只能由演示数据脚本预置（防权限提升）
+    if data.role == Role.admin:
+        raise BizError(400, "管理员账号不能自助注册，请联系管理员")
     if db.query(User).filter(User.username == data.username).first():
         raise BizError(400, "用户名已存在")
     user = User(
@@ -514,6 +529,8 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
 def me(user: User = Depends(get_current_user)):
     return user
 ```
+
+（评审修复：register 拒绝 data.role == Role.admin（终审 Important）——原实现接受请求体 role 原样入库，任何匿名调用者可自封 admin 获得管理员 token；管理员账号仅由演示数据脚本预置）
 
 `backend/app/models/__init__.py` 与 `backend/app/api/__init__.py` 为空文件。修改 `backend/app/main.py`，在 `register_exception_handlers(app)` 后加：
 
@@ -2773,7 +2790,10 @@ DEEPSEEK_API_KEY=sk-你的key
 # EMBEDDING_MODEL=BAAI/bge-m3
 # VECTOR_BACKEND=milvus   # milvus | faiss（Milvus 跑不起来时改 faiss）
 # HF_ENDPOINT=https://hf-mirror.com   # 模型下载慢时启用（在启动后端前设置环境变量）
+# SECRET_KEY=生产环境必须替换默认密钥（见 app/config.py）
 ```
+
+（评审修复：.env.example 追加 SECRET_KEY 注释——生产部署照抄模板会静默使用入库的默认密钥，token 可被伪造）
 
 根目录 `README.md`：
 
