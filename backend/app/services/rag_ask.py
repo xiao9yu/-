@@ -17,16 +17,26 @@ class RagAnswer:
     citations: list[dict] = field(default_factory=list)
 
 
-def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000) -> list[dict]:
-    """把检索结果编号拼进 system prompt，超出长度截断。"""
-    blocks, total = [], 0
+def _select_hits(hits: list[RagHit], max_chars: int) -> list[tuple[int, RagHit]]:
+    """按 max_chars 预算截断命中并编号，返回 (ref_no, hit) 列表。"""
+    selected: list[tuple[int, RagHit]] = []
+    total = 0
     for i, h in enumerate(hits, start=1):
         page = f" 第{h.chunk.page}页" if h.chunk.page is not None else ""
         block = f"[{i}] 来源:{h.chunk.source}{page} 类型:{h.chunk.kind}\n{h.chunk.text}"
         if total + len(block) > max_chars:
             break
-        blocks.append(block)
+        selected.append((i, h))
         total += len(block)
+    return selected
+
+
+def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000) -> list[dict]:
+    """把检索结果编号拼进 system prompt，超出长度截断。"""
+    blocks = []
+    for i, h in _select_hits(hits, max_chars):
+        page = f" 第{h.chunk.page}页" if h.chunk.page is not None else ""
+        blocks.append(f"[{i}] 来源:{h.chunk.source}{page} 类型:{h.chunk.kind}\n{h.chunk.text}")
     system = PROMPT_SYSTEM
     if blocks:
         system += "\n\n【检索资料】\n" + "\n\n".join(blocks)
@@ -45,6 +55,7 @@ def rag_ask(
 ) -> RagAnswer:
     """完整链路：混合检索 → 组装提示词 → LLM 生成 → 引用溯源。"""
     hits = hybrid_retrieve(question, collections, top_k, vector_store=vector_store, embedder=embedder)
+    selected = _select_hits(hits, 4000)  # 与 prompt 同一编号切片，截断后引用不越界
     messages = build_answer_prompt(question, hits)
     chat = llm or get_gateway()
     answer = chat.chat(messages)
@@ -57,6 +68,6 @@ def rag_ask(
             "excerpt": h.chunk.text[:200],
             "image_path": h.chunk.meta.get("image_path"),
         }
-        for i, h in enumerate(hits, start=1)
+        for i, h in selected
     ]
     return RagAnswer(answer=answer, citations=citations)
