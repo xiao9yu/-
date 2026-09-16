@@ -65,7 +65,7 @@ def make_demo_files() -> None:
     # 4) 教材 pdf
     pdf_doc = open_pdf()
     page = pdf_doc.new_page()
-    page.insert_text((72, 72), "人工智能导论：机器学习基础\n梯度下降通过迭代更新参数逼近最优解。")
+    page.insert_text((72, 72), "人工智能导论：机器学习基础\n梯度下降通过迭代更新参数逼近最优解。", fontname="china-s")
     pdf_doc.save(DEMO_DIR / "人工智能导论教材.pdf")
     pdf_doc.close()
     print("演示文件已生成：", DEMO_DIR)
