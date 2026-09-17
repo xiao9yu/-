@@ -110,8 +110,8 @@ if __name__ == "__main__":
     db = SessionLocal()
     try:
         seed_users(db)
-        seed_prep_demo(db)
         make_demo_files()
+        seed_prep_demo(db)
         print("演示账号：admin/admin123(管理员) teacher/teacher123(教师) student/student123(学生) counselor/counselor123(就业指导)")
     finally:
         db.close()
