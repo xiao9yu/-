@@ -1,5 +1,6 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能备课任务(17)
 """备课接口：课程管理/生成/保存版本/资源检索引用/多媒体/导出。"""
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from ..config import settings
 from ..core.exceptions import BizError
@@ -14,6 +16,7 @@ from ..db import get_db
 from ..models.prep import Citation, Course, Lesson, MediaFile, VersionSnapshot
 from ..models.user import Role, User
 from ..services import prep_export, prep_generator, prep_resources
+from ..services.llm_gateway import LLMError
 from .deps import get_current_user
 
 router = APIRouter()
@@ -77,6 +80,11 @@ def add_collaborator(course_id: int, data: CollaboratorIn,
     course = _get_course(course_id, user, db)
     if user.id != course.owner_id and user.role != Role.admin:
         raise BizError(403, "仅课程创建者可添加协作者")
+    target = db.get(User, data.user_id)
+    if target is None:
+        raise BizError(404, "用户不存在")
+    if target.role not in (Role.teacher, Role.admin):
+        raise BizError(400, "仅教师或管理员可被添加为协作者（该用户角色无备课模块权限）")
     members = list(course.member_ids or [])
     if data.user_id not in members:
         members.append(data.user_id)
@@ -134,28 +142,32 @@ def generate(course_id: int, data: GenerateIn,
              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     course = _get_course(course_id, user, db)
     resources, citations = _collect_resources(course_id, data.query, db)
-    if data.type == "plan":
-        content = prep_generator.generate_lesson_plan(
-            course.name, course.subject, data.chapter, data.objectives, data.hours, resources)
-        prep_generator.validate_lesson_plan(content)
-    elif data.type == "cw":
-        content = prep_generator.generate_courseware(
-            course.name, course.subject, data.chapter, data.objectives, data.hours, resources)
-        prep_generator.validate_courseware(content)
-    elif data.type == "exercises":
-        content = prep_generator.generate_exercises(
-            course.name, course.subject, data.chapter, data.knowledge_points, data.count, resources)
-        prep_generator.validate_exercises(content)
-    elif data.type == "case":
-        content = prep_generator.generate_case(
-            course.name, course.subject, data.chapter, data.objectives, resources)
-        prep_generator.validate_case(content)
-    elif data.type == "exam":
-        content = prep_generator.generate_monthly_exam(
-            course.name, course.subject, data.distribution or [{"知识点": data.chapter, "占比": "100%"}], resources)
-        prep_generator.validate_exam(content)
-    else:
-        raise BizError(400, "不支持的生成类型（plan/cw/exercises/case/exam）")
+    try:
+        if data.type == "plan":
+            content = prep_generator.generate_lesson_plan(
+                course.name, course.subject, data.chapter, data.objectives, data.hours, resources)
+            prep_generator.validate_lesson_plan(content)
+        elif data.type == "cw":
+            content = prep_generator.generate_courseware(
+                course.name, course.subject, data.chapter, data.objectives, data.hours, resources)
+            prep_generator.validate_courseware(content)
+        elif data.type == "exercises":
+            content = prep_generator.generate_exercises(
+                course.name, course.subject, data.chapter, data.knowledge_points, data.count, resources)
+            prep_generator.validate_exercises(content)
+        elif data.type == "case":
+            content = prep_generator.generate_case(
+                course.name, course.subject, data.chapter, data.objectives, resources)
+            prep_generator.validate_case(content)
+        elif data.type == "exam":
+            content = prep_generator.generate_monthly_exam(
+                course.name, course.subject, data.distribution or [{"知识点": data.chapter, "占比": "100%"}], resources)
+            prep_generator.validate_exam(content)
+        else:
+            raise BizError(400, "不支持的生成类型（plan/cw/exercises/case/exam）")
+    except LLMError as exc:
+        # DeepSeek key 未配置/调用失败 → 友好 502（评审修复：原先落通用 500）
+        raise BizError(502, str(exc)) from exc
     return {"type": data.type, "content": content, "citations": citations}
 
 
@@ -306,23 +318,28 @@ def export_lesson(lesson_id: int, format: str = Query("docx"),
     if lesson is None:
         raise BizError(404, "教案不存在")
     _get_course(lesson.course_id, user, db)
-    tmp = Path(tempfile.mkdtemp(prefix="prep_export_"))
     content = lesson.content_json or {}
     # 导出映射（Global Constraints）：docx←plan/case，pptx←cw，pdf←exercises/exam
-    if format == "docx" and lesson.lesson_type in ("plan", "case"):
+    if format not in ("docx", "pptx", "pdf"):
+        raise BizError(400, "不支持的导出格式（docx/pptx/pdf）")
+    if not ((format == "docx" and lesson.lesson_type in ("plan", "case"))
+            or (format == "pptx" and lesson.lesson_type == "cw")
+            or (format == "pdf" and lesson.lesson_type in ("exercises", "exam"))):
+        raise BizError(400, "该教案类型不支持此导出格式")
+    # 格式校验通过后才建临时目录；响应完成后由 BackgroundTask 清理（评审修复：防临时目录泄漏）
+    tmp = Path(tempfile.mkdtemp(prefix="prep_export_"))
+    out_path = tmp / f"{lesson.title}.{format}"
+    if format == "docx":
         if lesson.lesson_type == "case":
-            out = prep_export.export_case_docx(content, tmp / f"{lesson.title}.docx")
+            out = prep_export.export_case_docx(content, out_path)
         else:
-            out = prep_export.export_lesson_docx(content, tmp / f"{lesson.title}.docx")
-    elif format == "pptx" and lesson.lesson_type == "cw":
-        out = prep_export.export_courseware_pptx(content, tmp / f"{lesson.title}.pptx")
-    elif format == "pdf" and lesson.lesson_type in ("exercises", "exam"):
+            out = prep_export.export_lesson_docx(content, out_path)
+    elif format == "pptx":
+        out = prep_export.export_courseware_pptx(content, out_path)
+    else:
         exercises = content.get("习题", []) if lesson.lesson_type == "exercises" \
             else [q for s in content.get("大题", []) for q in s.get("题目", [])]
-        out = prep_export.export_exercises_pdf(exercises, lesson.title, tmp / f"{lesson.title}.pdf")
-    elif format not in ("docx", "pptx", "pdf"):
-        raise BizError(400, "不支持的导出格式（docx/pptx/pdf）")
-    else:
-        raise BizError(400, "该教案类型不支持此导出格式")
+        out = prep_export.export_exercises_pdf(exercises, lesson.title, out_path)
     return FileResponse(str(out), filename=out.name,
-                        media_type="application/octet-stream")
+                        media_type="application/octet-stream",
+                        background=BackgroundTask(shutil.rmtree, tmp))

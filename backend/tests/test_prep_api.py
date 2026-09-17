@@ -182,6 +182,76 @@ def test_export_endpoint_docx(client, tmp_path):
     assert "梯度下降教案" in text
 
 
+def test_generate_missing_api_key_returns_502(client, monkeypatch):
+    """评审修复：LLMError 未捕获时返回通用 500，需在路由层转 BizError(502) 友好提示。"""
+    from app.services import prep_generator
+    from app.services.llm_gateway import LLMError
+
+    def _raise_llm_error(*args, **kwargs):
+        raise LLMError("未配置 DEEPSEEK_API_KEY，请在 backend/.env 中配置")
+
+    headers = _register_login(client, "t7", "teacher")
+    course = _create_course(client, headers)
+    # 生成路径共用的 _call_json 抛 LLMError（等价于网关 _check_key 缺 key 失败）
+    monkeypatch.setattr(prep_generator, "_call_json", _raise_llm_error)
+    resp = client.post(f"/api/prep/courses/{course['id']}/generate",
+                       json={"type": "plan", "chapter": "第3章", "objectives": "理解梯度下降"},
+                       headers=headers)
+    assert resp.status_code == 502
+    assert "未配置 DEEPSEEK_API_KEY" in resp.json()["detail"]
+
+
+def test_export_cleanup_and_invalid_format_no_temp_leak(client):
+    """评审修复：导出临时目录必须随响应清理；400 格式请求不应产生临时目录。"""
+    import shutil
+    import tempfile
+    from pathlib import Path
+    tmp_root = Path(tempfile.gettempdir())
+    # 先清掉历史残留（含 RED 阶段泄漏的目录），保证断言确定性
+    for d in tmp_root.glob("prep_export_*"):
+        shutil.rmtree(d, ignore_errors=True)
+    headers = _register_login(client, "t8", "teacher")
+    course = _create_course(client, headers)
+    lesson = client.post(f"/api/prep/courses/{course['id']}/lessons",
+                         json={"title": "教案", "lesson_type": "plan",
+                               "content_json": {"标题": "梯度下降教案", "教学目标": ["理解梯度下降"]}},
+                         headers=headers).json()
+    resp = client.get(f"/api/prep/lessons/{lesson['id']}/export?format=docx", headers=headers)
+    assert resp.status_code == 200
+    assert resp.content  # 完整读取响应体，随后 BackgroundTask 执行清理
+    leftovers = list(tmp_root.glob("prep_export_*"))
+    assert not leftovers, f"导出后残留临时目录: {leftovers}"
+    # 格式非法组合（plan × xlsx）→ 400，且不产生临时目录
+    resp = client.get(f"/api/prep/lessons/{lesson['id']}/export?format=xlsx", headers=headers)
+    assert resp.status_code == 400
+    leftovers = list(tmp_root.glob("prep_export_*"))
+    assert not leftovers, f"400 请求不应产生临时目录: {leftovers}"
+
+
+def test_add_collaborator_validates_user_and_role(client):
+    """评审修复：仅 teacher/admin 可被添加为协作者，目标用户必须存在（防角色旁路）。"""
+    owner = _register_login(client, "t9", "teacher")
+    course = _create_course(client, owner)
+    # student 不可被添加（否则获得成员读写权限，绕过"只读"约束）
+    _register_login(client, "stu9", "student")
+    stu_id = client.post("/api/auth/login", json={"username": "stu9",
+                                                  "password": "pass123456"}).json()["user"]["id"]
+    resp = client.post(f"/api/prep/courses/{course['id']}/collaborators",
+                       json={"user_id": stu_id}, headers=owner)
+    assert resp.status_code == 400
+    # counselor 不参与本模块，同样不可被添加
+    _register_login(client, "cou9", "counselor")
+    cou_id = client.post("/api/auth/login", json={"username": "cou9",
+                                                  "password": "pass123456"}).json()["user"]["id"]
+    resp = client.post(f"/api/prep/courses/{course['id']}/collaborators",
+                       json={"user_id": cou_id}, headers=owner)
+    assert resp.status_code == 400
+    # 不存在的用户 → 404
+    resp = client.post(f"/api/prep/courses/{course['id']}/collaborators",
+                       json={"user_id": 999999}, headers=owner)
+    assert resp.status_code == 404
+
+
 class _FakeEmb:
     dim = 3
 
