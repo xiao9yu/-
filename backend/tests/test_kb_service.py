@@ -178,6 +178,46 @@ def test_delete_document_permissions_and_cleanup(tmp_path, db, monkeypatch):
     assert {p.name for p in tmp_path.iterdir()} == {"kb.db", "demo.pdf"}
 
 
+def test_ask_stream_events_and_citations(tmp_path, db, monkeypatch):
+    """SSE 生成器：citations → delta → done；引用含全文与图片路径。"""
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    store = _FakeStore(tmp_path)
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: store)
+    pdf = tmp_path / "demo.pdf"
+    _sample_pdf(pdf)
+    add_document(_upload_pdf(pdf), "public", _admin(), tmp_path, db)
+
+    class FakeGateway:
+        def chat_stream(self, messages, temperature=0.7):
+            yield "梯度下降"
+            yield "是核心算法"
+
+    monkeypatch.setattr(kb_service, "get_gateway", lambda: FakeGateway())
+    out = "".join(kb_service.ask_stream("什么是梯度下降", _student(), db))
+    assert "event: citations" in out
+    assert "demo.pdf" in out                       # 引用来源为原始文件名
+    assert '"text": "梯度下降"' in out             # delta 片段
+    assert "event: done" in out
+    # 无 reranker 时降级路径同样可用（reranker=None 默认）
+
+
+def test_ask_stream_error_event_on_llm_failure(tmp_path, db, monkeypatch):
+    """LLM 未配置/失败 → event: error（SSE 内友好提示，不炸流）。"""
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: _FakeStore(tmp_path))
+    from app.services.llm_gateway import LLMError
+
+    class BadGateway:
+        def chat_stream(self, messages, temperature=0.7):
+            raise LLMError("未配置 DEEPSEEK_API_KEY，请在 backend/.env 中配置")
+            yield  # pragma: no cover（raise 后不可达，保持生成器形态）
+
+    monkeypatch.setattr(kb_service, "get_gateway", lambda: BadGateway())
+    out = "".join(kb_service.ask_stream("你好", _student(), db))
+    assert "event: error" in out
+    assert "DEEPSEEK_API_KEY" in out
+
+
 class _FakeStore:
     """极简落盘向量库替身：方法签名对齐 FaissVectorStore。"""
 

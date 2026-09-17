@@ -27,6 +27,15 @@ def test_reranker_sorts_by_score_desc():
     assert [h.chunk.id for h in out] == ["c1", "c2"]
 
 
+def test_reranker_instance_callable_for_hybrid_retrieve():
+    """Reranker 实例可当 callable 传入 hybrid_retrieve（rerank(query, hits, top_n) 约定）。"""
+    from app.services.rerank import Reranker
+    r = Reranker.__new__(Reranker)          # 不触发真实模型下载
+    r.model = FakeModel([0.1, 0.9, 0.5])
+    out = r("q", _hits(3), 2)               # __call__ 委托 rerank
+    assert [h.chunk.id for h in out] == ["c1", "c2"]
+
+
 def test_get_reranker_returns_none_on_load_failure(monkeypatch):
     """模型加载失败降级返回 None（调用方跳过精排，不阻塞问答）。"""
     from app.services import rerank

@@ -21,6 +21,15 @@ class Reranker:
         order = sorted(range(len(scores)), key=lambda i: -scores[i])
         return [hits[i] for i in order[:top_n]]
 
+    def __call__(self, query: str, hits: list[RagHit], top_n: int = 5) -> list[RagHit]:
+        """兼容 hybrid_retrieve 的 callable 约定（rerank(query, hits, top_n)）。
+
+        hybrid_retrieve 把 rerank 参数当可调用对象使用，而 get_reranker 返回
+        Reranker 实例；不加 __call__ 则问答路由在生产（模型加载成功）时抛
+        TypeError 中断 SSE 流。
+        """
+        return self.rerank(query, hits, top_n)
+
 
 _reranker = None
 

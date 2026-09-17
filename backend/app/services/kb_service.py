@@ -4,6 +4,9 @@
 集合约定：公共库 kb_public（admin 维护），私有库 kb_user_{user_id}（每用户一个）。
 入库持久化：文档块落 kb_chunks 表，向量落向量库集合（Milvus/FAISS，Task 1 单例）。
 """
+import json
+from typing import Iterator
+
 from fastapi import UploadFile
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -14,7 +17,11 @@ from ..models.kb import KbChunk, KbDocument
 from ..models.user import Role, User
 from ..services.embeddings import EmbedderError, get_embedder
 from ..services.file_service import delete_file, get_file_path, save_upload
+from ..services.llm_gateway import LLMError, get_gateway
 from ..services.parser import parse_document
+from ..services.parser.chunk import Chunk
+from ..services.rag import KBCollection, hybrid_retrieve
+from ..services.rag_ask import _select_hits, build_answer_prompt
 from ..services.vector_store import VectorStore, get_vector_store
 
 PUBLIC_COLLECTION = "kb_public"
@@ -127,3 +134,68 @@ def delete_document(doc_id: int, user: User, upload_dir, db: Session,
     db.delete(doc)
     db.commit()
     delete_file(file_id, upload_dir, db)
+
+
+def ask_stream(question: str, user: User, db: Session, *,
+               vector_store=None, embedder=None, reranker=None, gateway=None) -> Iterator[str]:
+    """流式问答（SSE 生成器）：检索（私有+公共）→ citations 事件 → LLM 逐段 delta → done。
+
+    失败时发 event: error（检索/LLM 错误均不破坏流协议，前端按事件渲染）。
+    V1 单轮：不保存会话历史。
+    """
+
+    def sse(event: str, data) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    try:
+        # 经本模块 get_embedder 解析嵌入模型后显式传入 hybrid_retrieve：
+        # 避免 rag 模块内部再走真实 bge-m3（测试 monkeypatch 本模块 get_embedder 即可覆盖全链路）
+        emb = embedder or get_embedder()
+        hits = hybrid_retrieve(question, _load_collections(user, db), top_k=5,
+                               vector_store=vector_store, embedder=emb, rerank=reranker)
+        selected = _select_hits(hits, 4000)
+        citations = [
+            {
+                "ref_no": i,
+                "source": h.chunk.source,
+                "page": h.chunk.page,
+                "kind": h.chunk.kind,
+                "excerpt": h.chunk.text[:200],
+                "text": h.chunk.text,                       # 全文（前端"展开原文"）
+                "image_path": h.chunk.meta.get("image_path"),
+                "chunk_id": h.chunk.id,
+            }
+            for i, h in selected
+        ]
+        yield sse("citations", citations)
+        gw = gateway or get_gateway()
+        for piece in gw.chat_stream(build_answer_prompt(question, hits)):
+            yield sse("delta", {"text": piece})
+        yield sse("done", {})
+    except EmbedderError as exc:
+        yield sse("error", {"message": str(exc)})
+    except LLMError as exc:
+        yield sse("error", {"message": str(exc)})
+    except BizError as exc:
+        yield sse("error", {"message": exc.message})
+
+
+def _load_collections(user: User, db: Session) -> list[KBCollection]:
+    """检索语料：公共库全部 + 本人私有库（仅 ready 文档，按集合名组装）。"""
+    def rows(cond):
+        return (db.query(KbChunk).join(KbDocument, KbChunk.document_id == KbDocument.id)
+                .filter(cond, KbDocument.status == "ready").all())
+
+    def to_col(name, chunk_rows):
+        chunks = [Chunk(text=r.text, kind=r.kind, source=r.source, id=r.id,
+                        page=r.page, meta=dict(r.meta or {})) for r in chunk_rows]
+        return KBCollection(name=name, chunks=chunks)
+
+    cols = []
+    public_rows = rows(KbDocument.scope == "public")
+    if public_rows:
+        cols.append(to_col(PUBLIC_COLLECTION, public_rows))
+    private_rows = rows(and_(KbDocument.scope == "private", KbDocument.owner_id == user.id))
+    if private_rows:
+        cols.append(to_col(private_collection(user.id), private_rows))
+    return cols
