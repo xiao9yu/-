@@ -14,7 +14,10 @@ from pymupdf import open as open_pdf
 
 from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
+from app.models.file import FileRecord
+from app.models.prep import Course, CourseFile
 from app.models.user import Role, User
+from app.services.file_service import save_upload
 
 DEMO_DIR = Path(__file__).resolve().parents[1] / "data" / "demo"
 
@@ -31,6 +34,37 @@ def seed_users(db) -> None:
         if not db.query(User).filter(User.username == username).first():
             db.add(User(username=username, hashed_password=hash_password(pwd), role=role, real_name=name))
     db.commit()
+
+
+# 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能备课任务(17)
+def seed_prep_demo(db) -> None:
+    """备课演示数据：teacher 预置课程 + 演示文件登记为课程资源。"""
+    teacher = db.query(User).filter(User.username == "teacher").first()
+    if teacher is None:
+        return
+    course = db.query(Course).filter(Course.name == "人工智能导论").first()
+    if course is None:
+        course = Course(name="人工智能导论", subject="人工智能",
+                        description="高职人工智能课程（演示数据）", owner_id=teacher.id)
+        db.add(course)
+        db.commit()
+        db.refresh(course)
+    # 演示文件登记为课程资源（资源检索实时解析，无需向量化）
+    demo_files = ["人工智能导论讲义.docx", "机器学习课件.pptx", "诊断试题.xlsx", "人工智能导论教材.pdf"]
+    for name in demo_files:
+        if not db.query(FileRecord).filter(FileRecord.filename == name).first():
+            from fastapi import UploadFile
+            import io
+            path = DEMO_DIR / name
+            if path.exists():
+                with open(path, "rb") as f:
+                    record = save_upload(
+                        UploadFile(filename=name, file=io.BytesIO(f.read())),
+                        owner_id=0, upload_dir=str(DEMO_DIR.parent.parent / "uploads"), db=db,
+                    )
+                db.add(CourseFile(course_id=course.id, file_id=record.id))
+    db.commit()
+    print("备课演示数据已就绪：课程「人工智能导论」+ 4 个课程资源文件")
 
 
 def make_demo_files() -> None:
@@ -76,6 +110,7 @@ if __name__ == "__main__":
     db = SessionLocal()
     try:
         seed_users(db)
+        seed_prep_demo(db)
         make_demo_files()
         print("演示账号：admin/admin123(管理员) teacher/teacher123(教师) student/student123(学生) counselor/counselor123(就业指导)")
     finally:
