@@ -880,6 +880,23 @@ def test_export_case_docx(tmp_path):
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "垃圾邮件分类教学案例" in text
     assert "朴素贝叶斯" in text and "95%" in text
+
+
+def test_export_exercises_pdf_fallback_font_twice(tmp_path, monkeypatch):
+    """模拟无 simhei 环境：回退字体注册名必须被缓存，连续两次导出都不崩。"""
+    import pymupdf
+
+    import app.services.prep_export as prep_export
+
+    monkeypatch.setattr(prep_export, "_CN_FONT_NAME", None)  # 重置缓存，强制走回退注册路径
+    monkeypatch.setattr(Path, "exists", lambda self: False)  # 无 Windows 字体
+    out1 = prep_export.export_exercises_pdf(EXERCISES, "诊断试题", tmp_path / "习题1.pdf")
+    out2 = prep_export.export_exercises_pdf(EXERCISES, "诊断试题", tmp_path / "习题2.pdf")
+    assert out1.is_file() and out2.is_file()  # Path.exists 已被 patch，用 is_file 断言落盘
+    doc = pymupdf.open(str(out2))
+    text = doc[0].get_text()
+    doc.close()
+    assert "梯度下降" in text
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -906,25 +923,25 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-_CN_FONT_REGISTERED = False
+_CN_FONT_NAME: str | None = None
 
 
 def _register_cn_font() -> str:
     """注册中文字体：优先 Windows 黑体（simhei.ttf），找不到回退 reportlab 内置 CID 字体。
     返回注册名。"""
-    global _CN_FONT_REGISTERED
-    if _CN_FONT_REGISTERED:
-        return "CnFont"
+    global _CN_FONT_NAME
+    if _CN_FONT_NAME:
+        return _CN_FONT_NAME
     for path in (r"C:\Windows\Fonts\simhei.ttf", r"C:\Windows\Fonts\simfang.ttf"):
         try:
             if Path(path).exists():
                 pdfmetrics.registerFont(TTFont("CnFont", path))
-                _CN_FONT_REGISTERED = True
+                _CN_FONT_NAME = "CnFont"
                 return "CnFont"
         except Exception:
             continue
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-    _CN_FONT_REGISTERED = True
+    _CN_FONT_NAME = "STSong-Light"
     return "STSong-Light"
 
 
@@ -1012,7 +1029,7 @@ def export_case_docx(content: dict, out_path: Path) -> Path:
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd backend && python -m pytest tests/test_prep_export.py -v`
-Expected: PASS（4 passed）。若 PDF 中文断言失败，检查 simhei.ttf 是否存在（`ls C:/Windows/Fonts/simhei.ttf`），不存在则依赖回退字体 STSong-Light（读回文本仍应含中文）。
+Expected: PASS（5 passed）。若 PDF 中文断言失败，检查 simhei.ttf 是否存在（`ls C:/Windows/Fonts/simhei.ttf`），不存在则依赖回退字体 STSong-Light（读回文本仍应含中文）。
 
 - [ ] **Step 5: 提交**
 
