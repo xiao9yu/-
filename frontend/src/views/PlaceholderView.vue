@@ -12,7 +12,7 @@ import { useRoute } from 'vue-router'
 
 const names: Record<string, string> = {
   prep: '智能备课（工单17）', assistant: '智能助教（工单18）',
-  learn: '个性化学习（工单19）', interview: '面试AI复盘（工单20）'
+  learn: '个性化学习（工单19）'
 }
 const route = useRoute()
 const title = computed(() => names[String(route.params.name)] || '模块')

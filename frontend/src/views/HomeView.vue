@@ -7,7 +7,6 @@
         <el-menu-item index="/prep">智能备课</el-menu-item>
         <el-menu-item index="/module/assistant">智能助教</el-menu-item>
         <el-menu-item index="/module/learn">个性化学习</el-menu-item>
-        <el-menu-item index="/module/interview">面试AI复盘</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
