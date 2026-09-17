@@ -127,6 +127,22 @@ def test_add_document_embedder_failure_marks_failed(tmp_path, db, monkeypatch):
     assert doc is not None and doc.status == "failed" and "HF_ENDPOINT" in doc.error
 
 
+def test_add_document_unexpected_error_marks_failed(tmp_path, db, monkeypatch):
+    """向量库故障等未预期异常：文档记 failed（不产生"ready 但 0 块"幻影），异常上抛。"""
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+
+    class BoomStore(_FakeStore):
+        def upsert(self, name, ids, vectors, metadatas):
+            raise RuntimeError("向量库不可用")
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: BoomStore(tmp_path))
+    pdf = tmp_path / "demo.pdf"
+    _sample_pdf(pdf)
+    with pytest.raises(RuntimeError, match="向量库不可用"):
+        add_document(_upload_pdf(pdf), "private", _teacher(), tmp_path, db)
+    doc = db.query(KbDocument).first()
+    assert doc is not None and doc.status == "failed" and "向量库不可用" in doc.error
+
+
 def test_list_documents_scope_visibility(tmp_path, db, monkeypatch):
     """列表可见性：本人私有 + 全部公共，他人私有不可见。"""
     monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())

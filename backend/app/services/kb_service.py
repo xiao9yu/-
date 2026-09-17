@@ -34,7 +34,8 @@ def add_document(file: UploadFile, scope: str, user: User, upload_dir, db: Sessi
     """上传文档入库：底座落盘 → 登记 → 解析分块 → 向量化入集合 → 块落表。
 
     解析为空（含 .doc/.ppt/.xls 二进制老格式）拒绝上传并回滚；
-    向量化失败（bge-m3 不可用）保留文档记录 status=failed，EmbedderError 上抛由路由转 502。
+    向量化失败（bge-m3 不可用）保留文档记录 status=failed，EmbedderError 上抛由路由转 502；
+    其他未预期异常（向量库故障/解析崩溃）同样记 failed 后上抛（不产生"ready 但 0 块"幻影文档）。
     """
     if scope not in ("public", "private"):
         raise BizError(400, "scope 仅支持 public（公共库）或 private（私有库）")
@@ -42,6 +43,8 @@ def add_document(file: UploadFile, scope: str, user: User, upload_dir, db: Sessi
         raise BizError(403, "仅管理员可向公共库上传文档")
     record = save_upload(file, owner_id=user.id, upload_dir=upload_dir, db=db)
     doc = KbDocument(title=record.filename, file_id=record.id, scope=scope, owner_id=user.id)
+    # 先记 failed 再提交：索引成功后 _index_document 才置 ready，防止中途异常/崩溃留下幻影 ready 文档
+    doc.status = "failed"
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -54,6 +57,12 @@ def add_document(file: UploadFile, scope: str, user: User, upload_dir, db: Sessi
         delete_file(record.id, upload_dir, db)
         raise
     except EmbedderError as exc:
+        doc.status = "failed"
+        doc.error = str(exc)
+        db.commit()
+        raise
+    except Exception as exc:
+        # 其他异常（向量库故障/解析崩溃/提交失败）记 failed 后上抛（复审修复：幻影 ready 文档）
         doc.status = "failed"
         doc.error = str(exc)
         db.commit()
