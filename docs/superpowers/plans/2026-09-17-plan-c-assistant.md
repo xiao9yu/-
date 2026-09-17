@@ -14,7 +14,7 @@
 - 代码注释用中文；每个任务结束必须 git commit（身份 `huqiaoyu <huqiaoyu@local>`，用 `git -c user.name="huqiaoyu" -c user.email="huqiaoyu@local" commit ...`）
 - TDD：后端每个任务先写失败测试→跑测试确认失败→实现→跑测试确认通过→提交；pytest 从 `backend/` 目录运行（`python -m pytest`），默认排除 smoke；改动的既有测试文件按其既有风格追加
 - 前端不写单测，以 `npm run build` 通过 + 手动功能清单验证
-- 权限模型（设计文档 §5 原文落实）：公共库（`kb_public` 集合）上传/删除仅 `admin`，全员只读检索；私有库（`kb_user_{user_id}` 集合）仅本人上传/删除/检索；`student` 可上传私有库与问答；问答检索范围 = 本人私有库 + 公共库
+- 权限模型（设计文档 §5 原文落实）：公共库（`kb_public` 集合）上传/删除仅 `admin`，全员只读检索；私有库（`kb_user_{user_id}` 集合）仅本人上传/删除/检索（**控制器裁定 2026-09-17：admin 可删除他人私有库文档，行使管理权，与本计划图片访问约束"私有库仅 owner/admin"一致；问答检索范围不变**）；`student` 可上传私有库与问答；问答检索范围 = 本人私有库 + 公共库
 - 集合命名常量：`kb_public` / `kb_user_{user_id}`（服务层提供 `PUBLIC_COLLECTION` 与 `private_collection(user_id)`）
 - 引用标注格式沿用：`[N] 来源：文件名 第X页`（页为空时省略"第X页"）
 - 流式问答协议（SSE）：先发 `event: citations`（含 ref_no/source/page/kind/excerpt 全文 text/image_path/chunk_id），再逐段 `event: delta`（`{"text": "..."}`），最后 `event: done`；检索/LLM 失败发 `event: error`（`{"message": "..."}`）——单轮问答，不保存会话历史
@@ -1004,7 +1004,8 @@ def add_document(file: UploadFile, scope: str, user: User, upload_dir, db: Sessi
     """上传文档入库：底座落盘 → 登记 → 解析分块 → 向量化入集合 → 块落表。
 
     解析为空（含 .doc/.ppt/.xls 二进制老格式）拒绝上传并回滚；
-    向量化失败（bge-m3 不可用）保留文档记录 status=failed，EmbedderError 上抛由路由转 502。
+    向量化失败（bge-m3 不可用）保留文档记录 status=failed，EmbedderError 上抛由路由转 502；
+    其他未预期异常（向量库故障/解析崩溃）同样记 failed 后上抛（复审修复：不产生"ready 但 0 块"幻影文档）。
     """
     if scope not in ("public", "private"):
         raise BizError(400, "scope 仅支持 public（公共库）或 private（私有库）")
@@ -1012,6 +1013,8 @@ def add_document(file: UploadFile, scope: str, user: User, upload_dir, db: Sessi
         raise BizError(403, "仅管理员可向公共库上传文档")
     record = save_upload(file, owner_id=user.id, upload_dir=upload_dir, db=db)
     doc = KbDocument(title=record.filename, file_id=record.id, scope=scope, owner_id=user.id)
+    # 先记 failed 再提交：索引成功后 _index_document 才置 ready
+    doc.status = "failed"
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -1024,6 +1027,11 @@ def add_document(file: UploadFile, scope: str, user: User, upload_dir, db: Sessi
         delete_file(record.id, upload_dir, db)
         raise
     except EmbedderError as exc:
+        doc.status = "failed"
+        doc.error = str(exc)
+        db.commit()
+        raise
+    except Exception as exc:
         doc.status = "failed"
         doc.error = str(exc)
         db.commit()
