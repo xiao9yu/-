@@ -1887,7 +1887,7 @@ export async function askStream(
                 </template>
                 <el-image v-if="c.kind === 'image'" :src="images[c.chunk_id] || ''" fit="contain"
                   style="max-height: 160px; margin-bottom: 6px" :preview-src-list="[images[c.chunk_id] || '']" />
-                <el-skeleton v-if="c.kind === 'image' && !images[c.chunk_id]" :rows="1" animated />
+                <el-skeleton v-if="c.kind === 'image' && images[c.chunk_id] === undefined" :rows="1" animated />
                 <pre v-if="c.kind === 'table'" style="white-space: pre-wrap; font-size: 12px; color: #666">{{ c.text }}</pre>
                 <el-collapse>
                   <el-collapse-item title="原文摘录">{{ c.text }}</el-collapse-item>
