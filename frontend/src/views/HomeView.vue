@@ -4,7 +4,7 @@
     <el-aside width="220px">
       <el-menu :default-active="$route.path" router background-color="#001529" text-color="#ccc" active-text-color="#fff">
         <el-menu-item index="/">首页</el-menu-item>
-        <el-menu-item index="/module/prep">智能备课</el-menu-item>
+        <el-menu-item index="/prep">智能备课</el-menu-item>
         <el-menu-item index="/module/assistant">智能助教</el-menu-item>
         <el-menu-item index="/module/learn">个性化学习</el-menu-item>
         <el-menu-item index="/module/interview">面试AI复盘</el-menu-item>
