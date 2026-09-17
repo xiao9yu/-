@@ -1,6 +1,7 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能助教任务(18)
 """精排服务：bge-reranker 对 RRF 粗排结果重打分（设计文档 §4.2.2 重排序要求）。"""
 import logging
+import threading
 
 from .rag import RagHit
 
@@ -32,15 +33,27 @@ class Reranker:
 
 
 _reranker = None
+_lock = threading.Lock()
 
 
 def get_reranker() -> Reranker | None:
-    """懒加载单例；模型加载失败返回 None（调用方降级跳过精排，问答不阻塞）。"""
+    """懒加载单例；模型加载失败返回 None（调用方降级跳过精排，问答不阻塞）。
+
+    终审修复：并发锁防重入——预热线程（main.lifespan 启动时后台加载）持锁期间，
+    并发请求不排队等待（非阻塞获取），直接返回 None 降级为仅 RRF 融合；
+    避免请求线程阻塞在 CrossEncoder 下载/读盘上，也杜绝模型被并发二次构建。
+    获锁后双重检查哨兵，预热期间被其他线程抢先加载完成时直接复用。
+    """
     global _reranker
     if _reranker is None:
-        try:
-            _reranker = Reranker()
-        except Exception as exc:
-            logger.warning("bge-reranker 加载失败，降级跳过精排：%s", exc)
-            _reranker = False
+        if _lock.acquire(blocking=False):
+            try:
+                if _reranker is None:  # 双重检查：获锁前可能已被预热线程加载完成
+                    try:
+                        _reranker = Reranker()
+                    except Exception as exc:
+                        logger.warning("bge-reranker 加载失败，降级跳过精排：%s", exc)
+                        _reranker = False
+            finally:
+                _lock.release()
     return _reranker or None

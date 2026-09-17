@@ -56,6 +56,7 @@ def test_hybrid_retrieve_rerank_limits_and_reorders():
     rerank = lambda q, hits, n: list(reversed(hits[:n]))[:n]   # noqa: E731 反转序验证重排生效
     out = hybrid_retrieve("语料", [col], top_k=3, vector_store=vs, embedder=emb, rerank=rerank)
     assert len(out) == 3
+    assert [h.chunk.id for h in out] == ["d2", "d1", "d0"]  # 反转序证明精排确实生效（终审修复）
     # 无 rerank 时原路径行为不变：BM25 按 top_k 截断（6 块语料全命中，top_k=6 时融合返回全量 6 条）
     # （控制器裁定：简报原断言 top_k=3 时 len==6 与 BM25Index.search 的 top_k 截断行为矛盾）
     out2 = hybrid_retrieve("语料", [col], top_k=6, vector_store=vs, embedder=emb)
