@@ -1,5 +1,6 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能备课任务(17)
 """备课接口：课程管理/生成/保存版本/资源检索引用/多媒体/导出。"""
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -13,9 +14,12 @@ from starlette.background import BackgroundTask
 from ..config import settings
 from ..core.exceptions import BizError
 from ..db import get_db
-from ..models.prep import Citation, Course, Lesson, MediaFile, VersionSnapshot
+from ..models.file import FileRecord
+from ..models.prep import Citation, Course, CourseFile, Lesson, MediaFile, VersionSnapshot
 from ..models.user import Role, User
 from ..services import prep_export, prep_generator, prep_resources
+from ..services.embeddings import EmbedderError
+from ..services.file_service import delete_file
 from ..services.llm_gateway import LLMError
 from .deps import get_current_user
 
@@ -93,6 +97,36 @@ def add_collaborator(course_id: int, data: CollaboratorIn,
     return {"ok": True, "member_ids": members}
 
 
+# ---------- 课程资源列表/删除（台账 B 终审 2） ----------
+
+
+@router.get("/courses/{course_id}/resources")
+def list_course_resources(course_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _get_course(course_id, user, db)
+    return [
+        {"id": r.id, "filename": r.filename, "size": r.size, "created_at": r.created_at.isoformat()}
+        for r in prep_resources.list_resources(course_id, db)
+    ]
+
+
+@router.delete("/courses/{course_id}/resources/{file_id}")
+def delete_course_resource(course_id: int, file_id: int, user: User = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    course = _get_course(course_id, user, db)
+    if user.role != Role.admin and user.id != course.owner_id:
+        raise BizError(403, "仅课程所有者或管理员可删除资源")
+    link = db.query(CourseFile).filter(CourseFile.course_id == course_id,
+                                       CourseFile.file_id == file_id).first()
+    if link is None:
+        raise BizError(404, "资源不存在")
+    record = db.get(FileRecord, file_id)
+    db.delete(link)
+    db.commit()
+    if record is not None:
+        delete_file(file_id, settings.upload_dir, db)
+    return {"ok": True}
+
+
 # ---------- 资源检索 ----------
 
 
@@ -108,7 +142,11 @@ def upload_resource(course_id: int, file: UploadFile = File(...),
 def search_course_resources(course_id: int, q: str = Query(...), top_k: int = 5,
                             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _get_course(course_id, user, db)
-    hits = prep_resources.search_resources(course_id, q, settings.upload_dir, db, top_k=top_k)
+    try:
+        hits = prep_resources.search_resources(course_id, q, settings.upload_dir, db, top_k=top_k)
+    except EmbedderError as exc:
+        # bge-m3 加载失败 → 友好 502（台账 B 终审 3）
+        raise BizError(502, str(exc)) from exc
     return {"hits": [{"ref": h["ref"], "score": h["score"], "excerpt": h["chunk"].text[:200],
                       "source": h["chunk"].source, "page": h["chunk"].page} for h in hits]}
 
@@ -131,7 +169,11 @@ def _collect_resources(course_id: int, query: str, db: Session) -> tuple[str, li
     """检索校本资源并拼成 prompt 上下文；返回 (resources 文本, 引用列表)。"""
     if not query:
         return "", []
-    hits = prep_resources.search_resources(course_id, query, settings.upload_dir, db, top_k=3)
+    try:
+        hits = prep_resources.search_resources(course_id, query, settings.upload_dir, db, top_k=3)
+    except EmbedderError as exc:
+        # bge-m3 加载失败 → 友好 502（台账 B 终审 3）
+        raise BizError(502, str(exc)) from exc
     return "\n".join(f"{h['ref']}\n{h['chunk'].text[:300]}" for h in hits), \
         [{"ref_no": i, "source": h["chunk"].source, "page": h["chunk"].page,
           "excerpt": h["chunk"].text[:200]} for i, h in enumerate(hits, start=1)]
@@ -327,19 +369,26 @@ def export_lesson(lesson_id: int, format: str = Query("docx"),
             or (format == "pdf" and lesson.lesson_type in ("exercises", "exam"))):
         raise BizError(400, "该教案类型不支持此导出格式")
     # 格式校验通过后才建临时目录；响应完成后由 BackgroundTask 清理（评审修复：防临时目录泄漏）
+    # 标题含路径字符会生成子目录路径/非法文件名，导出前清洗（台账 B 终审 1）
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", lesson.title).strip("_") or "lesson"
     tmp = Path(tempfile.mkdtemp(prefix="prep_export_"))
-    out_path = tmp / f"{lesson.title}.{format}"
-    if format == "docx":
-        if lesson.lesson_type == "case":
-            out = prep_export.export_case_docx(content, out_path)
+    out_path = tmp / f"{safe_title}.{format}"
+    try:
+        if format == "docx":
+            if lesson.lesson_type == "case":
+                out = prep_export.export_case_docx(content, out_path)
+            else:
+                out = prep_export.export_lesson_docx(content, out_path)
+        elif format == "pptx":
+            out = prep_export.export_courseware_pptx(content, out_path)
         else:
-            out = prep_export.export_lesson_docx(content, out_path)
-    elif format == "pptx":
-        out = prep_export.export_courseware_pptx(content, out_path)
-    else:
-        exercises = content.get("习题", []) if lesson.lesson_type == "exercises" \
-            else [q for s in content.get("大题", []) for q in s.get("题目", [])]
-        out = prep_export.export_exercises_pdf(exercises, lesson.title, out_path)
-    return FileResponse(str(out), filename=out.name,
-                        media_type="application/octet-stream",
-                        background=BackgroundTask(shutil.rmtree, tmp))
+            exercises = content.get("习题", []) if lesson.lesson_type == "exercises" \
+                else [q for s in content.get("大题", []) for q in s.get("题目", [])]
+            out = prep_export.export_exercises_pdf(exercises, lesson.title, out_path)
+        return FileResponse(str(out), filename=out.name,
+                            media_type="application/octet-stream",
+                            background=BackgroundTask(shutil.rmtree, tmp))
+    except Exception:
+        # 生成中途异常也要清理临时目录（台账 B 终审 4；BackgroundTask 只在响应构造成功时挂载）
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise

@@ -252,6 +252,95 @@ def test_add_collaborator_validates_user_and_role(client):
     assert resp.status_code == 404
 
 
+def test_export_filename_sanitized(client):
+    """教案标题含路径字符时导出应成功（修复前：标题含 / 会生成子目录路径导致 500）。"""
+    headers = _register_login(client, "t_exp1", "teacher")
+    course = _create_course(client, headers)
+    lesson = client.post(f"/api/prep/courses/{course['id']}/lessons",
+                         json={"title": "教案/第1课:导论?*", "lesson_type": "plan",
+                               "content_json": {"标题": "教案/第1课:导论?*"}}, headers=headers).json()
+    r = client.get(f"/api/prep/lessons/{lesson['id']}/export", params={"format": "docx"}, headers=headers)
+    assert r.status_code == 200
+    assert "docx" in r.headers.get("content-disposition", "")
+
+
+def test_export_tempdir_cleaned_on_error(client, tmp_path, monkeypatch):
+    """导出中途异常时临时目录也应清理（台账 B 终审 4）。"""
+    from app.api import prep as prep_api
+    fake_tmp = tmp_path / "prep_export_fake"
+    fake_tmp.mkdir()
+    monkeypatch.setattr(prep_api.tempfile, "mkdtemp", lambda **k: str(fake_tmp))
+
+    def boom(content, out_path):
+        raise RuntimeError("导出失败")
+    monkeypatch.setattr(prep_api.prep_export, "export_lesson_docx", boom)
+    headers = _register_login(client, "t_exp2", "teacher")
+    course = _create_course(client, headers)
+    lesson = client.post(f"/api/prep/courses/{course['id']}/lessons",
+                         json={"title": "导出异常教案", "lesson_type": "plan",
+                               "content_json": {"标题": "导出异常教案"}}, headers=headers).json()
+    # 全局 Exception 处理器已发回 500 响应，但 Starlette 会继续上抛异常，
+    # 默认 TestClient(raise_server_exceptions=True) 会在测试里重新抛出 RuntimeError，
+    # 因此用关闭该选项的客户端观察 500 响应（与台账预期一致）
+    from fastapi.testclient import TestClient
+    no_raise = TestClient(app, raise_server_exceptions=False)
+    r = no_raise.get(f"/api/prep/lessons/{lesson['id']}/export",
+                     params={"format": "docx"}, headers=headers)
+    assert r.status_code == 500
+    assert not fake_tmp.exists()
+
+
+def test_course_resources_list_and_delete(client, tmp_path, monkeypatch):
+    """课程资源列表/删除端点：教师可删，学生 403；磁盘文件同步删除（台账 B 终审 2）。"""
+    from app.config import settings
+    upload_dir = tmp_path / "uploads"
+    monkeypatch.setattr(settings, "upload_dir", str(upload_dir))
+    headers = _register_login(client, "t_res", "teacher")
+    student_headers = _register_login(client, "stu_res", "student")
+    course = _create_course(client, headers)
+    before = set(upload_dir.iterdir()) if upload_dir.exists() else set()
+    up = client.post(f"/api/prep/courses/{course['id']}/resources",
+                     files={"file": ("讲义.docx", b"hello", "application/octet-stream")},
+                     headers=headers)
+    assert up.status_code == 200
+    assert len(set(upload_dir.iterdir())) == len(before) + 1
+    r = client.get(f"/api/prep/courses/{course['id']}/resources", headers=headers)
+    assert r.status_code == 200 and len(r.json()) == 1
+    fid = r.json()[0]["id"]
+    assert client.delete(f"/api/prep/courses/{course['id']}/resources/{fid}",
+                         headers=student_headers).status_code == 403
+    assert client.delete(f"/api/prep/courses/{course['id']}/resources/{fid}",
+                         headers=headers).status_code == 200
+    assert client.get(f"/api/prep/courses/{course['id']}/resources", headers=headers).json() == []
+    assert set(upload_dir.iterdir()) == before      # 磁盘文件已同步删除
+
+
+def test_search_embedder_error_502(client, tmp_path, monkeypatch):
+    """bge-m3 加载失败时检索返回 502 友好提示（台账 B 终审 3）。"""
+    from app.config import settings
+    from app.services.embeddings import EmbedderError
+    import app.services.prep_resources as pr
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    headers = _register_login(client, "t_emb", "teacher")
+    course = _create_course(client, headers)
+    # 先传一个真实资源（无资源时检索早退，走不到 embedder）。
+    # 内容用真实 docx：b"hello" 不是合法 docx，解析阶段就会抛异常、到不了 embedder
+    import io
+    from docx import Document
+    doc = Document()
+    doc.add_paragraph("梯度下降通过沿负梯度方向迭代更新参数逼近最优解。")
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    client.post(f"/api/prep/courses/{course['id']}/resources",
+                files={"file": ("讲义.docx", buf, "application/octet-stream")}, headers=headers)
+    monkeypatch.setattr(pr, "get_embedder", lambda: (_ for _ in ()).throw(
+        EmbedderError("嵌入模型加载失败：offline。HF_ENDPOINT=https://hf-mirror.com")))
+    r = client.get(f"/api/prep/courses/{course['id']}/search", params={"q": "梯度下降"}, headers=headers)
+    assert r.status_code == 502
+    assert "HF_ENDPOINT" in r.json()["detail"]
+
+
 class _FakeEmb:
     dim = 3
 
