@@ -1958,8 +1958,13 @@ async function onDelete(d: KbDocument) {
 
 async function loadImg(chunkId: string) {
   if (images.value[chunkId]) return
-  const blob = await loadChunkImage(chunkId)
-  images.value[chunkId] = URL.createObjectURL(blob)
+  try {
+    const blob = await loadChunkImage(chunkId)
+    images.value[chunkId] = URL.createObjectURL(blob)
+  } catch {
+    // 图片获取失败：标记空串隐藏骨架占位，避免未处理 rejection 与永久转圈（复审 Important 修复）
+    images.value[chunkId] = ''
+  }
 }
 
 async function onAsk() {
