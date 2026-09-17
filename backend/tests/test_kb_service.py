@@ -218,6 +218,17 @@ def test_ask_stream_error_event_on_llm_failure(tmp_path, db, monkeypatch):
     assert "DEEPSEEK_API_KEY" in out
 
 
+def test_ask_stream_unexpected_error_sends_error_event(tmp_path, db, monkeypatch):
+    """检索等未预期异常兜底：按 SSE 协议发 event: error，不截断流（复审 Important 修复）。"""
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(kb_service, "hybrid_retrieve",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("向量库不可用")))
+    out = list(kb_service.ask_stream("梯度下降", _teacher(), db))
+    assert len(out) == 1
+    assert out[0].startswith("event: error")
+    assert "问答服务异常" in out[0]
+
+
 class _FakeStore:
     """极简落盘向量库替身：方法签名对齐 FaissVectorStore。"""
 

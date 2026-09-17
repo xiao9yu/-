@@ -5,6 +5,7 @@
 入库持久化：文档块落 kb_chunks 表，向量落向量库集合（Milvus/FAISS，Task 1 单例）。
 """
 import json
+import logging
 from typing import Iterator
 
 from fastapi import UploadFile
@@ -25,6 +26,8 @@ from ..services.rag_ask import _select_hits, build_answer_prompt
 from ..services.vector_store import VectorStore, get_vector_store
 
 PUBLIC_COLLECTION = "kb_public"
+
+logger = logging.getLogger("kb_service")
 
 
 def private_collection(user_id: int) -> str:
@@ -178,6 +181,10 @@ def ask_stream(question: str, user: User, db: Session, *,
         yield sse("error", {"message": str(exc)})
     except BizError as exc:
         yield sse("error", {"message": exc.message})
+    except Exception:
+        # 兜底：向量库检索故障/精排期异常等未预期错误也按协议发 error，不截断流（复审 Important）
+        logger.exception("知识库问答流异常")
+        yield sse("error", {"message": "问答服务异常，请稍后重试"})
 
 
 def _load_collections(user: User, db: Session) -> list[KBCollection]:
