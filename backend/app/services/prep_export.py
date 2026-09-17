@@ -14,25 +14,25 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-_CN_FONT_REGISTERED = False
+_CN_FONT_NAME: str | None = None
 
 
 def _register_cn_font() -> str:
     """注册中文字体：优先 Windows 黑体（simhei.ttf），找不到回退 reportlab 内置 CID 字体。
     返回注册名。"""
-    global _CN_FONT_REGISTERED
-    if _CN_FONT_REGISTERED:
-        return "CnFont"
+    global _CN_FONT_NAME
+    if _CN_FONT_NAME:
+        return _CN_FONT_NAME
     for path in (r"C:\Windows\Fonts\simhei.ttf", r"C:\Windows\Fonts\simfang.ttf"):
         try:
             if Path(path).exists():
                 pdfmetrics.registerFont(TTFont("CnFont", path))
-                _CN_FONT_REGISTERED = True
+                _CN_FONT_NAME = "CnFont"
                 return "CnFont"
         except Exception:
             continue
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-    _CN_FONT_REGISTERED = True
+    _CN_FONT_NAME = "STSong-Light"
     return "STSong-Light"
 
 

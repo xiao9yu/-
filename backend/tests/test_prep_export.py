@@ -78,3 +78,20 @@ def test_export_case_docx(tmp_path):
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "垃圾邮件分类教学案例" in text
     assert "朴素贝叶斯" in text and "95%" in text
+
+
+def test_export_exercises_pdf_fallback_font_twice(tmp_path, monkeypatch):
+    """模拟无 simhei 环境：回退字体注册名必须被缓存，连续两次导出都不崩。"""
+    import pymupdf
+
+    import app.services.prep_export as prep_export
+
+    monkeypatch.setattr(prep_export, "_CN_FONT_NAME", None)  # 重置缓存，强制走回退注册路径
+    monkeypatch.setattr(Path, "exists", lambda self: False)  # 无 Windows 字体
+    out1 = prep_export.export_exercises_pdf(EXERCISES, "诊断试题", tmp_path / "习题1.pdf")
+    out2 = prep_export.export_exercises_pdf(EXERCISES, "诊断试题", tmp_path / "习题2.pdf")
+    assert out1.is_file() and out2.is_file()  # Path.exists 已被 patch，用 is_file 断言落盘
+    doc = pymupdf.open(str(out2))
+    text = doc[0].get_text()
+    doc.close()
+    assert "梯度下降" in text
