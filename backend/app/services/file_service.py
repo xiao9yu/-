@@ -2,13 +2,13 @@
 """文件服务：上传落盘+登记、路径解析、删除。
 db 会话由调用方传入（API 层用请求级会话，测试用临时库）。
 """
-import shutil
 import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..core.exceptions import BizError
 from ..models.file import FileRecord
 
@@ -31,21 +31,23 @@ def _check_ext(filename: str) -> str:
     return ext
 
 
-def save_upload(file: UploadFile, owner_id: int, upload_dir: Path | str, db: Session) -> FileRecord:
-    """保存上传文件到 upload_dir（磁盘名用 uuid），并在数据库登记。"""
+def save_upload(file: UploadFile, owner_id: int, upload_dir: Path | str, db: Session,
+                max_bytes: int | None = None) -> FileRecord:
+    """保存上传文件到 upload_dir（磁盘名用 uuid），并在数据库登记；超过大小上限拒绝。"""
     upload_dir = Path(upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
     ext = _check_ext(file.filename or "unknown")
     stored_name = f"{uuid.uuid4().hex}.{ext}"
     dest = upload_dir / stored_name
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    data = file.file.read()
+    limit = max_bytes if max_bytes is not None else settings.max_upload_mb * 1024 * 1024
+    if len(data) > limit:
+        raise BizError(400, f"文件超过大小限制（{settings.max_upload_mb}MB）")
+    dest.write_bytes(data)
     record = FileRecord(
         filename=file.filename or stored_name,
         stored_name=stored_name,
-        ext=ext,
-        size=dest.stat().st_size,
-        owner_id=owner_id,
+        ext=ext, size=len(data), owner_id=owner_id,
     )
     db.add(record)
     db.commit()

@@ -55,3 +55,20 @@ def test_hybrid_retrieve_merges_vector_and_bm25(tmp_path):
     ids = [h.chunk.id for h in hits]
     assert "c1" in ids  # 向量命中：查询向量 [1,0,0] 的最近邻
     assert "c3" in ids  # 仅 BM25 可命中：c3 向量与查询向量正交，但文本匹配"计算机网络"
+
+
+def test_bm25_two_chunk_corpus_has_nonzero_scores():
+    """2 块语料 BM25 评分应非 0（台账 A-5：旧 rank-bm25 公式 N=df 时 IDF 恒 0）。"""
+    from app.services.parser.chunk import Chunk
+    from app.services.rag import BM25Index
+    chunks = [Chunk(text="梯度下降是机器学习核心优化算法", kind="text", source="a.md"),
+              Chunk(text="线性回归用于回归任务", kind="text", source="b.md")]
+    hits = BM25Index(chunks).search("梯度下降")
+    assert hits and hits[0].score > 0
+
+def test_get_bm25_index_cached():
+    from app.services.parser.chunk import Chunk
+    from app.services.rag import get_bm25_index
+    chunks = [Chunk(text="缓存测试语料一", kind="text", source="a.md"),
+              Chunk(text="缓存测试语料二", kind="text", source="b.md")]
+    assert get_bm25_index(chunks) is get_bm25_index(chunks)

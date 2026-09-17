@@ -71,6 +71,9 @@ class LLMGateway:
                 except (TypeError, ValueError):
                     delay = self.backoff_base * (2 ** attempt)
                 time.sleep(min(delay, 8.0))
+            except Exception as exc:
+                # 非可重试错误（错 key 401、参数 400 等）直接包成 LLMError，不再空转重试（台账 A-2）
+                raise LLMError(f"大模型调用失败：{exc}") from exc
         raise LLMError(f"大模型调用失败（已重试3次）：{last_exc}")
 
     @staticmethod
@@ -124,15 +127,20 @@ class LLMGateway:
     def chat_stream(self, messages: list[dict], temperature: float = 0.7) -> Iterator[str]:
         """流式输出，逐段 yield 文本。"""
         self._check_key()
-        stream = self.client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=messages,
-            temperature=temperature,
-            stream=True,
-        )
-        for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        try:
+            stream = self.client.chat.completions.create(
+                model=settings.deepseek_model,
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except LLMError:
+            raise
+        except Exception as exc:
+            raise LLMError(f"大模型调用失败：{exc}") from exc
 
 
 _gateway: LLMGateway | None = None

@@ -110,3 +110,14 @@ def test_parse_unsupported_returns_empty(tmp_path):
     path = tmp_path / "x.xyz"
     path.write_text("abc")
     assert parse_document(path) == []
+
+
+def test_split_text_rejects_overlap_not_less_than_size():
+    import pytest
+    from app.services.parser.chunk import split_text
+    with pytest.raises(ValueError):
+        split_text("abc" * 100, chunk_size=100, overlap=100)
+
+def test_split_text_blank_returns_empty():
+    from app.services.parser.chunk import split_text
+    assert split_text("   \n  ") == []

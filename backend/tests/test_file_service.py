@@ -88,3 +88,49 @@ def test_download_requires_ownership(client, tmp_path, monkeypatch):
         client.get(f"/api/files/{fid}/download", headers={"Authorization": f"Bearer {t1}"}).status_code
         == 200
     )
+
+
+def test_save_upload_exceeds_limit_rejected(tmp_path, db):
+    """超过大小上限拒绝上传且不留残留（台账 A-6）。
+    注：本文件 db 夹具在 tmp_path 下建 f.db，故断言对象用上传子目录（偏离简报，理由见报告）。
+    """
+    import io
+    import pytest
+    from fastapi import UploadFile
+    from app.core.exceptions import BizError
+    from app.models.file import FileRecord
+    from app.services.file_service import save_upload
+
+    upload_dir = tmp_path / "up"
+    file = UploadFile(filename="big.pdf", file=io.BytesIO(b"x" * 100))
+    with pytest.raises(BizError, match="大小限制"):
+        save_upload(file, owner_id=1, upload_dir=upload_dir, db=db, max_bytes=10)
+    assert db.query(FileRecord).count() == 0
+    assert list(upload_dir.iterdir()) == []
+
+
+def test_list_files_pagination(client, tmp_path, monkeypatch):
+    """GET /api/files 支持 page/size 分页（台账 A-6）。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+
+    def _reg(u):
+        return client.post("/api/auth/register",
+                           json={"username": u, "password": "pass123456", "role": "student"})
+
+    def _token(u):
+        return client.post("/api/auth/login",
+                           json={"username": u, "password": "pass123456"}).json()["access_token"]
+
+    _reg("p1")
+    t = _token("p1")
+    headers = {"Authorization": f"Bearer {t}"}
+    for i in range(3):
+        assert client.post("/api/files/upload",
+                           files={"file": (f"f{i}.txt", b"hello", "text/plain")},
+                           headers=headers).status_code == 200
+    r1 = client.get("/api/files", params={"page": 1, "size": 2}, headers=headers)
+    assert r1.status_code == 200 and len(r1.json()) == 2
+    r2 = client.get("/api/files", params={"page": 2, "size": 2}, headers=headers)
+    assert r2.status_code == 200 and len(r2.json()) == 1

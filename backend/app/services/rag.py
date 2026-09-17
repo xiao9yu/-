@@ -5,7 +5,7 @@
 from dataclasses import dataclass, field
 
 import jieba
-from rank_bm25 import BM25Okapi
+from rank_bm25 import BM25Plus
 
 from .embeddings import get_embedder
 from .parser.chunk import Chunk
@@ -34,7 +34,9 @@ class KBCollection:
 class BM25Index:
     def __init__(self, chunks: list[Chunk]):
         self.chunks = chunks
-        self._bm25 = BM25Okapi([tokenize(c.text) for c in chunks]) if chunks else None
+        # 旧公式（BM25Okapi）N=df 时 IDF 恒 0，2 块语料下任何查询都召回为空；
+        # Plus 公式 IDF=ln((N+1)/df) 规避该问题（台账 A-5，控制器裁定）。
+        self._bm25 = BM25Plus([tokenize(c.text) for c in chunks]) if chunks else None
 
     def search(self, query: str, top_k: int = 10) -> list[RagHit]:
         if not self._bm25:
@@ -57,6 +59,19 @@ def rrf_fuse(ranked_lists: list[list[RagHit]], k: int = 60) -> list[RagHit]:
     return [h for h, _ in sorted(fused.values(), key=lambda x: -x[1])]
 
 
+_bm25_cache: dict[tuple[str, ...], BM25Index] = {}
+
+
+def get_bm25_index(chunks: list[Chunk]) -> BM25Index:
+    """按语料指纹缓存 BM25 索引（台账 A-5：每查询重建浪费）；缓存上限 8 个，超限整体清空。"""
+    key = tuple(c.id for c in chunks)
+    if key not in _bm25_cache:
+        if len(_bm25_cache) >= 8:
+            _bm25_cache.clear()
+        _bm25_cache[key] = BM25Index(chunks)
+    return _bm25_cache[key]
+
+
 def hybrid_retrieve(
     question: str,
     collections: list[KBCollection],
@@ -77,7 +92,7 @@ def hybrid_retrieve(
             chunk = by_id.get(hit.metadata.get("chunk_id"))
             if chunk is not None:
                 vhits.append(RagHit(chunk=chunk, score=float(hit.score)))
-        bhits = BM25Index(col.chunks).search(question, top_k)
+        bhits = get_bm25_index(col.chunks).search(question, top_k)
         ranked.append(vhits)
         ranked.append(bhits)
     return rrf_fuse(ranked)

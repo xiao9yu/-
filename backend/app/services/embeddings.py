@@ -28,9 +28,20 @@ _embedder: Embedder | None = None
 _lock = threading.Lock()
 
 
+class EmbedderError(Exception):
+    """嵌入模型加载失败（含用户可操作的指引）。"""
+
+
 def get_embedder() -> Embedder:
     global _embedder
     with _lock:
         if _embedder is None:
-            _embedder = Embedder()
+            try:
+                _embedder = Embedder()
+            except Exception as exc:
+                raise EmbedderError(
+                    f"嵌入模型加载失败：{exc}。首次运行需联网下载 bge-m3"
+                    "（可设置 HF_ENDPOINT=https://hf-mirror.com 加速），"
+                    "已有模型缓存时可设置 HF_HUB_OFFLINE=1 离线加载。"
+                ) from exc
         return _embedder

@@ -100,3 +100,19 @@ def test_chat_without_api_key_raises():
     gw = LLMGateway(api_key="", base_url="https://api.test")
     with pytest.raises(LLMError, match="DEEPSEEK_API_KEY"):
         gw.chat([{"role": "user", "content": "hi"}])
+
+
+def test_nonretryable_error_wrapped_as_llmerror(monkeypatch):
+    """非可重试 SDK 错误（错 key 401 等）应包成 LLMError 且不重试（台账 A-2）。"""
+    from app.services.llm_gateway import LLMError, LLMGateway
+
+    calls = []
+    def boom(**kwargs):
+        calls.append(1)
+        raise RuntimeError("401 Unauthorized")
+    gw = LLMGateway(api_key="sk-test")
+    monkeypatch.setattr(gw.client.chat.completions, "create", boom)
+    import pytest
+    with pytest.raises(LLMError, match="大模型调用失败"):
+        gw.chat([{"role": "user", "content": "hi"}])
+    assert len(calls) == 1

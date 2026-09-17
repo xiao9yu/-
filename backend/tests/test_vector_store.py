@@ -101,3 +101,23 @@ def test_milvus_expr_escapes_quotes():
     expr = MilvusVectorStore._build_expr({"source": 'x" or 1==1 or "'})
     assert expr == 'source == "x\\" or 1==1 or \\""'
     assert MilvusVectorStore._build_expr({"a": "1", "b": "2"}) == 'a == "1" and b == "2"'
+
+
+def test_get_vector_store_singleton(monkeypatch):
+    """get_vector_store 应返回模块级单例（台账 A-1：避免每次重读 FAISS 索引）。"""
+    from app.services import vector_store as vs
+
+    calls = []
+    class FakeStore:
+        def __init__(self): calls.append(1)
+    monkeypatch.setattr(vs, "_build_store", lambda: FakeStore())
+    vs.reset_vector_store()
+    s1 = vs.get_vector_store()
+    s2 = vs.get_vector_store()
+    assert s1 is s2
+    assert len(calls) == 1
+    vs.reset_vector_store()
+    s3 = vs.get_vector_store()
+    assert s3 is not s1          # reset 后重建
+    assert len(calls) == 2
+    vs.reset_vector_store()

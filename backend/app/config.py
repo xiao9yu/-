@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # 存储
     db_url: str = "sqlite:///./data/app.db"
     upload_dir: str = "./uploads"
+    max_upload_mb: int = 50
     # 向量与模型
     embedding_model: str = "BAAI/bge-m3"
     vector_backend: str = "milvus"  # milvus | faiss

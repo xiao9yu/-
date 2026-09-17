@@ -5,9 +5,10 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from ..core.exceptions import BizError
 from ..core.security import decode_token
 from ..db import get_db
-from ..models.user import User
+from ..models.user import Role, User
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -27,3 +28,12 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="用户不存在")
     return user
+
+
+def require_roles(*roles: Role):
+    """角色守卫依赖：仅指定角色可访问（台账 A-7，Task 6 公共库管理使用）。"""
+    def checker(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles:
+            raise BizError(403, "权限不足，仅限：" + "、".join(r.value for r in roles))
+        return user
+    return checker

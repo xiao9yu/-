@@ -183,11 +183,8 @@ class MilvusVectorStore(VectorStore):
             self.client.delete(collection_name=name, ids=ids)
 
 
-_factory_lock = None
-
-
-def get_vector_store() -> VectorStore:
-    """工厂：按配置选择后端；Milvus 异常时自动退回 FAISS（同为工单17 推荐方案）。"""
+def _build_store() -> VectorStore:
+    """按配置构建后端实例：Milvus 异常时自动退回 FAISS（同为设计文档推荐方案）。"""
     if settings.vector_backend == "faiss":
         return FaissVectorStore()
     try:
@@ -195,3 +192,20 @@ def get_vector_store() -> VectorStore:
     except Exception as exc:  # 本机环境跑不起 Milvus 时兜底
         logger.warning("Milvus 初始化失败，自动退回 FAISS：%s", exc)
         return FaissVectorStore()
+
+
+_store: VectorStore | None = None
+
+
+def get_vector_store() -> VectorStore:
+    """模块级单例：避免每次调用重读 FAISS 索引/重建 Milvus 客户端（台账 A-1）。"""
+    global _store
+    if _store is None:
+        _store = _build_store()
+    return _store
+
+
+def reset_vector_store() -> None:
+    """重置单例（测试用）。"""
+    global _store
+    _store = None

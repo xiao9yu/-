@@ -17,6 +17,12 @@ class Chunk:
 
 def split_text(text: str, chunk_size: int = 800, overlap: int = 100) -> list[str]:
     """按字符数切块（带重叠），保证向量化粒度与上下文连贯。"""
+    if chunk_size <= 0:
+        raise ValueError(f"chunk_size 必须为正数：{chunk_size}")
+    if overlap >= chunk_size:
+        raise ValueError(f"overlap 必须小于 chunk_size，否则切片永不前进：{overlap} >= {chunk_size}")
+    if not text.strip():
+        return []
     if len(text) <= chunk_size:
         return [text]
     parts = []
