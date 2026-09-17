@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .api import auth, files
+from .api import auth, files, prep
 from .core.exceptions import register_exception_handlers
 from .db import Base, engine
 
@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="edu-agent-platform", lifespan=lifespan)
 register_exception_handlers(app)
 app.include_router(files.router, prefix="/api/files", tags=["files"])
+app.include_router(prep.router, prefix="/api/prep", tags=["prep"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 
