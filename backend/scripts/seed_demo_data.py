@@ -3,6 +3,7 @@
 用法：cd backend && python -m scripts.seed_demo_data
 """
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -67,6 +68,85 @@ def seed_prep_demo(db) -> None:
     print("备课演示数据已就绪：课程「人工智能导论」+ 4 个课程资源文件")
 
 
+def seed_kb_demo(db, upload_dir="./uploads"):
+    """公共库演示文档：生成 PDF（文本+表格）→ 解析 → 向量化入公共库。幂等：已有 ready 公共文档则跳过。"""
+    from app.models.kb import KbDocument
+    exists = db.query(KbDocument).filter(KbDocument.scope == "public",
+                                         KbDocument.status == "ready").first()
+    if exists:
+        print("公共库已有演示文档，跳过")
+        return
+    from app.models.user import User
+    admin = db.query(User).filter(User.username == "admin").first()
+    if admin is None:
+        print("admin 不存在，跳过公共库演示数据")
+        return
+    pdf_path = Path(tempfile.gettempdir()) / "kb_demo_人工智能导论知识库.pdf"
+    _build_kb_demo_pdf(pdf_path)
+    from app.services import kb_service
+    from app.services.embeddings import EmbedderError
+    from fastapi import UploadFile
+    with open(pdf_path, "rb") as f:
+        file = UploadFile(filename="人工智能导论知识库.pdf", file=f)
+        try:
+            doc = kb_service.add_document(file, "public", admin, upload_dir, db)
+            print(f"公共库演示文档已入库：{doc.title}（{doc.chunk_count} 块）")
+        except EmbedderError as exc:
+            print(f"bge-m3 不可用，跳过公共库演示数据：{exc}")
+
+
+def _build_kb_demo_pdf(path):
+    """3 页演示 PDF：第 1 页文本（梯度下降）、第 2 页表格（优化器对比）、第 3 页文本（反向传播）。"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas
+
+    def _register_font():
+        # 与 make_demo_files 相同策略：Windows 用 simhei.ttf，否则 STSong-Light
+        try:
+            pdfmetrics.registerFont(TTFont("demo", r"C:\Windows\Fonts\simhei.ttf"))
+        except Exception:
+            from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+            pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+            return "STSong-Light"
+        return "demo"
+
+    font = _register_font()
+    c = canvas.Canvas(str(path), pagesize=A4)
+    w, h = A4
+
+    def draw_text_page(lines):
+        y = h - 80
+        c.setFont(font, 14)
+        for line in lines:
+            c.drawString(60, y, line)
+            y -= 30
+
+    draw_text_page([
+        "人工智能导论知识库",
+        "一、梯度下降：机器学习最常用的优化算法。",
+        "核心思想：沿损失函数梯度反方向迭代更新参数，使损失逐步减小。",
+        "学习率控制每步更新幅度：过大会震荡发散，过小则收敛缓慢。",
+    ])
+    c.showPage()
+    c.setFont(font, 14)
+    c.drawString(60, h - 80, "二、常见优化器对比")
+    rows = [["优化器", "特点"], ["SGD", "每次用单样本梯度，收敛慢"], ["Adam", "自适应学习率，收敛快且稳定"]]
+    x0, y0, cell_w, cell_h = 60, h - 140, 240, 30
+    c.setFont(font, 12)
+    for r, row in enumerate(rows):
+        for col, cell in enumerate(row):
+            c.rect(x0 + col * cell_w, y0 - r * cell_h, cell_w, cell_h)
+            c.drawString(x0 + col * cell_w + 8, y0 - r * cell_h + 10, cell)
+    c.showPage()
+    draw_text_page([
+        "三、反向传播：利用链式法则逐层计算梯度，",
+        "是训练深度神经网络的基础算法，与梯度下降配合完成参数更新。",
+    ])
+    c.save()
+
+
 def make_demo_files() -> None:
     DEMO_DIR.mkdir(parents=True, exist_ok=True)
     # 1) 讲义 docx
@@ -112,6 +192,7 @@ if __name__ == "__main__":
         seed_users(db)
         make_demo_files()
         seed_prep_demo(db)
+        seed_kb_demo(db)
         print("演示账号：admin/admin123(管理员) teacher/teacher123(教师) student/student123(学生) counselor/counselor123(就业指导)")
     finally:
         db.close()
