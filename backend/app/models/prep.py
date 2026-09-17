@@ -22,13 +22,13 @@ class Course(Base):
 
 
 class Lesson(Base):
-    """教案/课件大纲/习题集/月考试题：content_json 存结构化内容（键见各生成服务）。"""
+    """教案/课件大纲/习题集/教学案例/月考试题：content_json 存结构化内容（键见各生成服务）。"""
     __tablename__ = "lessons"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
     title: Mapped[str] = mapped_column(String(200))
-    lesson_type: Mapped[str] = mapped_column(String(20))  # plan|cw|exercises|exam
+    lesson_type: Mapped[str] = mapped_column(String(20))  # plan|cw|exercises|case|exam
     content_json: Mapped[dict] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[int] = mapped_column(Integer)

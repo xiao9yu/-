@@ -27,7 +27,7 @@
         <el-card>
           <template #header>资源引用（检索后一键插入）</template>
           <el-input v-model="refQuery" placeholder="检索课程资源">
-            <template #append><el-button @click="onRefSearch">检索</el-button></template>
+            <template #append><el-button :loading="refSearching" @click="onRefSearch">检索</el-button></template>
           </el-input>
           <div v-for="h in refHits" :key="h.ref" style="margin-top: 10px; font-size: 13px">
             <div><b>{{ h.ref }}</b></div>
@@ -67,6 +67,7 @@ const saving = ref(false)
 const versions = ref<any[]>([])
 const refQuery = ref('')
 const refHits = ref<any[]>([])
+const refSearching = ref(false)
 
 const editorRef = shallowRef()
 const toolbarConfig = { excludeKeys: ['group-video'] }
@@ -135,8 +136,13 @@ function jsonToHtml(data: any): string {
 
 async function onRefSearch() {
   if (!refQuery.value || !lesson.value) return
-  const data = await searchResources(lesson.value.course_id, refQuery.value)
-  refHits.value = data.hits
+  refSearching.value = true
+  try {
+    const data = await searchResources(lesson.value.course_id, refQuery.value)
+    refHits.value = data.hits
+  } finally {
+    refSearching.value = false
+  }
 }
 
 function onInsertRef(h: any) {

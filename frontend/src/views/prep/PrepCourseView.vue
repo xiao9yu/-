@@ -10,7 +10,7 @@
             <el-button>上传资源文件（docx/pptx/xlsx/pdf）</el-button>
           </el-upload>
           <el-input v-model="searchQ" placeholder="检索资源，如：梯度下降" style="margin-top: 12px">
-            <template #append><el-button @click="onSearch">检索</el-button></template>
+            <template #append><el-button :loading="searching" @click="onSearch">检索</el-button></template>
           </el-input>
           <div v-for="h in searchHits" :key="h.ref" style="margin-top: 10px; font-size: 13px">
             <div><b>{{ h.ref }}</b> <el-tag size="small">{{ h.score }}</el-tag></div>
@@ -52,7 +52,7 @@
             <el-button type="success" @click="onSave">保存为教案/课件</el-button>
             <div v-if="result.citations?.length" style="margin-top: 8px">
               <el-tag v-for="c in result.citations" :key="c.ref_no" style="margin-right: 6px">
-                [{{ c.ref_no }}] {{ c.source }}{{ c.page ? ` 第${c.page}页` : '' }}
+                [{{ c.ref_no }}] 来源：{{ c.source }}{{ c.page ? ` 第${c.page}页` : '' }}
               </el-tag>
             </div>
           </div>
@@ -86,6 +86,7 @@ const courseId = Number(route.params.id)
 const course = ref<Course | null>(null)
 const searchQ = ref('')
 const searchHits = ref<any[]>([])
+const searching = ref(false)
 const genForm = reactive({ type: 'plan', chapter: '', objectives: '', hours: '', knowledgePoints: '', distribution: '', query: '' })
 const generating = ref(false)
 const result = ref<any>(null)
@@ -104,8 +105,13 @@ async function onUpload(opt: any) {
 
 async function onSearch() {
   if (!searchQ.value) return
-  const data = await searchResources(courseId, searchQ.value)
-  searchHits.value = data.hits
+  searching.value = true
+  try {
+    const data = await searchResources(courseId, searchQ.value)
+    searchHits.value = data.hits
+  } finally {
+    searching.value = false
+  }
 }
 
 async function onGenerate() {

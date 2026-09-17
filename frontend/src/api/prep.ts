@@ -16,7 +16,8 @@ export const uploadResource = (courseId: number, file: File) => {
   return http.post(`/prep/courses/${courseId}/resources`, form)
 }
 export const searchResources = (courseId: number, q: string, topK = 5) =>
-  http.get(`/prep/courses/${courseId}/search`, { params: { q, top_k: topK } }) as Promise<{ hits: SearchHit[] }>
+  // bge-m3 冷启动首查需 30~60s，覆盖全局 30s 超时（终审修复）
+  http.get(`/prep/courses/${courseId}/search`, { params: { q, top_k: topK }, timeout: 120000 }) as Promise<{ hits: SearchHit[] }>
 export const generateContent = (courseId: number, data: any) =>
   http.post(`/prep/courses/${courseId}/generate`, data)
 export const createLesson = (courseId: number, data: Partial<Lesson>) =>
