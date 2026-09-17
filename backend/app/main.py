@@ -11,6 +11,10 @@ from .core.exceptions import register_exception_handlers
 from .db import Base, engine
 from .services.rerank import get_reranker
 
+# uvicorn 默认只给 uvicorn.* 配 handler，应用 logger 的 INFO 会静默丢弃；
+# basicConfig 给 root 挂 handler，预热/问答等应用日志可见（ERROR 原靠 lastResort 兜底）。
+logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger("main")
 
 
