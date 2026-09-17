@@ -344,7 +344,7 @@ def get_embedder() -> Embedder:
         return _embedder
 ```
 
-`backend/app/services/rag.py` 加 BM25 缓存（`import` 区不动）：
+`backend/app/services/rag.py` 加 BM25 缓存。**控制器裁定（2026-09-17）**：BM25 实现由 `BM25Okapi` 改用 `BM25Plus`——本任务 Step 1 的 2 块语料非 0 评分测试与 Okapi 公式互斥（N=df 时 IDF 恒 0），Plus 公式 IDF=ln((N+1)/df) 规避；`import` 区相应改为 `from rank_bm25 import BM25Plus`，实现处加中文注释说明原因。RRF 按排名融合，评分幅度变化不影响融合结果：
 
 ```python
 _bm25_cache: dict[tuple[str, ...], BM25Index] = {}
