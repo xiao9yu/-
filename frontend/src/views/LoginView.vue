@@ -32,6 +32,8 @@ async function onLogin() {
   try {
     await auth.login(form.username, form.password)
     router.push('/')
+  } catch {
+    // 错误提示由 http 拦截器统一弹出，这里只兜住未处理 rejection（台账 A-9）
   } finally {
     loading.value = false
   }

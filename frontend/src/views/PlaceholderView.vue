@@ -11,7 +11,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const names: Record<string, string> = {
-  prep: '智能备课（工单17）', assistant: '智能助教（工单18）',
+  prep: '智能备课（工单17）',
   learn: '个性化学习（工单19）'
 }
 const route = useRoute()

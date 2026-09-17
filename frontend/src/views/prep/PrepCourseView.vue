@@ -12,6 +12,12 @@
           <el-input v-model="searchQ" placeholder="检索资源，如：梯度下降" style="margin-top: 12px">
             <template #append><el-button :loading="searching" @click="onSearch">检索</el-button></template>
           </el-input>
+          <div style="margin-top: 12px; font-size: 13px">
+            <div v-for="r in resources" :key="r.id" style="display: flex; justify-content: space-between; margin-top: 6px">
+              <span>📄 {{ r.filename }}</span>
+              <el-button size="small" type="text" @click="onDeleteResource(r)">删除</el-button>
+            </div>
+          </div>
           <div v-for="h in searchHits" :key="h.ref" style="margin-top: 10px; font-size: 13px">
             <div><b>{{ h.ref }}</b> <el-tag size="small">{{ h.score }}</el-tag></div>
             <div style="color: #666">{{ h.excerpt }}</div>
@@ -77,8 +83,9 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  createLesson, generateContent, getCourse, LESSON_TYPE_LABELS, listCourseLessons,
-  searchResources, uploadResource, type Course,
+  createLesson, deleteCourseResource, generateContent, getCourse, LESSON_TYPE_LABELS,
+  listCourseLessons, listCourseResources, searchResources, uploadResource,
+  type Course, type CourseResource,
 } from '@/api/prep'
 
 const route = useRoute()
@@ -92,15 +99,24 @@ const generating = ref(false)
 const result = ref<any>(null)
 const lessonTitle = ref('')
 const lessons = ref<any[]>([])
+const resources = ref<CourseResource[]>([])
 
 async function load() {
   course.value = (await getCourse(courseId)) as Course
   lessons.value = (await listCourseLessons(courseId)) as any[]
+  resources.value = (await listCourseResources(courseId)) as CourseResource[]
 }
 
 async function onUpload(opt: any) {
   await uploadResource(courseId, opt.file)
   ElMessage.success('资源已上传')
+  await load()
+}
+
+async function onDeleteResource(r: CourseResource) {
+  await deleteCourseResource(courseId, r.id)
+  ElMessage.success('资源已删除')
+  await load()
 }
 
 async function onSearch() {

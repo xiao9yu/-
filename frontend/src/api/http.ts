@@ -16,7 +16,9 @@ http.interceptors.response.use(
   (resp) => resp.data,
   (err) => {
     ElMessage.error(err.response?.data?.detail || '请求失败')
-    if (err.response?.status === 401) window.location.href = '/login'
+    if (err.response?.status === 401 && !String(err.config?.url || '').includes('/auth/login')) {
+      window.location.href = '/login'
+    }
     return Promise.reject(err)
   }
 )

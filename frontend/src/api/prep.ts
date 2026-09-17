@@ -46,3 +46,9 @@ export const exportLesson = (id: number, format: string) =>
 export const LESSON_TYPE_LABELS: Record<string, string> = {
   plan: '教案', cw: '课件大纲', exercises: '习题集', case: '教学案例', exam: '月考试题',
 }
+
+export interface CourseResource { id: number; filename: string; size: number; created_at: string }
+export const listCourseResources = (courseId: number) =>
+  http.get(`/prep/courses/${courseId}/resources`) as Promise<CourseResource[]>
+export const deleteCourseResource = (courseId: number, fileId: number) =>
+  http.delete(`/prep/courses/${courseId}/resources/${fileId}`)
