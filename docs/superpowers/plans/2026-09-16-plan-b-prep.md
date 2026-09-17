@@ -142,13 +142,13 @@ class Course(Base):
 
 
 class Lesson(Base):
-    """教案/课件大纲/习题集/月考试题：content_json 存结构化内容（键见各生成服务）。"""
+    """教案/课件大纲/习题集/教学案例/月考试题：content_json 存结构化内容（键见各生成服务）。"""
     __tablename__ = "lessons"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
     title: Mapped[str] = mapped_column(String(200))
-    lesson_type: Mapped[str] = mapped_column(String(20))  # plan|cw|exercises|exam
+    lesson_type: Mapped[str] = mapped_column(String(20))  # plan|cw|exercises|case|exam
     content_json: Mapped[dict] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[int] = mapped_column(Integer)
@@ -1758,7 +1758,8 @@ export const uploadResource = (courseId: number, file: File) => {
   return http.post(`/prep/courses/${courseId}/resources`, form)
 }
 export const searchResources = (courseId: number, q: string, topK = 5) =>
-  http.get(`/prep/courses/${courseId}/search`, { params: { q, top_k: topK } }) as Promise<{ hits: SearchHit[] }>
+  // bge-m3 冷启动首查需 30~60s，覆盖全局 30s 超时（终审修复）
+  http.get(`/prep/courses/${courseId}/search`, { params: { q, top_k: topK }, timeout: 120000 }) as Promise<{ hits: SearchHit[] }>
 export const generateContent = (courseId: number, data: any) =>
   http.post(`/prep/courses/${courseId}/generate`, data)
 export const createLesson = (courseId: number, data: Partial<Lesson>) =>
@@ -1865,7 +1866,7 @@ onMounted(load)
             <el-button>上传资源文件（docx/pptx/xlsx/pdf）</el-button>
           </el-upload>
           <el-input v-model="searchQ" placeholder="检索资源，如：梯度下降" style="margin-top: 12px">
-            <template #append><el-button @click="onSearch">检索</el-button></template>
+            <template #append><el-button :loading="searching" @click="onSearch">检索</el-button></template>
           </el-input>
           <div v-for="h in searchHits" :key="h.ref" style="margin-top: 10px; font-size: 13px">
             <div><b>{{ h.ref }}</b> <el-tag size="small">{{ h.score }}</el-tag></div>
@@ -1907,7 +1908,7 @@ onMounted(load)
             <el-button type="success" @click="onSave">保存为教案/课件</el-button>
             <div v-if="result.citations?.length" style="margin-top: 8px">
               <el-tag v-for="c in result.citations" :key="c.ref_no" style="margin-right: 6px">
-                [{{ c.ref_no }}] {{ c.source }}{{ c.page ? ` 第${c.page}页` : '' }}
+                [{{ c.ref_no }}] 来源：{{ c.source }}{{ c.page ? ` 第${c.page}页` : '' }}
               </el-tag>
             </div>
           </div>
@@ -1941,6 +1942,7 @@ const courseId = Number(route.params.id)
 const course = ref<Course | null>(null)
 const searchQ = ref('')
 const searchHits = ref<any[]>([])
+const searching = ref(false)
 const genForm = reactive({ type: 'plan', chapter: '', objectives: '', hours: '', knowledgePoints: '', distribution: '', query: '' })
 const generating = ref(false)
 const result = ref<any>(null)
@@ -1959,8 +1961,13 @@ async function onUpload(opt: any) {
 
 async function onSearch() {
   if (!searchQ.value) return
-  const data = await searchResources(courseId, searchQ.value)
-  searchHits.value = data.hits
+  searching.value = true
+  try {
+    const data = await searchResources(courseId, searchQ.value)
+    searchHits.value = data.hits
+  } finally {
+    searching.value = false
+  }
 }
 
 async function onGenerate() {
@@ -2029,7 +2036,7 @@ onMounted(load)
         <el-card>
           <template #header>资源引用（检索后一键插入）</template>
           <el-input v-model="refQuery" placeholder="检索课程资源">
-            <template #append><el-button @click="onRefSearch">检索</el-button></template>
+            <template #append><el-button :loading="refSearching" @click="onRefSearch">检索</el-button></template>
           </el-input>
           <div v-for="h in refHits" :key="h.ref" style="margin-top: 10px; font-size: 13px">
             <div><b>{{ h.ref }}</b></div>
@@ -2069,6 +2076,7 @@ const saving = ref(false)
 const versions = ref<any[]>([])
 const refQuery = ref('')
 const refHits = ref<any[]>([])
+const refSearching = ref(false)
 
 const editorRef = shallowRef()
 const toolbarConfig = { excludeKeys: ['group-video'] }
@@ -2137,8 +2145,13 @@ function jsonToHtml(data: any): string {
 
 async function onRefSearch() {
   if (!refQuery.value || !lesson.value) return
-  const data = await searchResources(lesson.value.course_id, refQuery.value)
-  refHits.value = data.hits
+  refSearching.value = true
+  try {
+    const data = await searchResources(lesson.value.course_id, refQuery.value)
+    refHits.value = data.hits
+  } finally {
+    refSearching.value = false
+  }
 }
 
 function onInsertRef(h: any) {
