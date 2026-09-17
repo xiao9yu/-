@@ -52,9 +52,11 @@ def rag_ask(
     vector_store=None,
     embedder=None,
     llm=None,
+    rerank=None,
 ) -> RagAnswer:
-    """完整链路：混合检索 → 组装提示词 → LLM 生成 → 引用溯源。"""
-    hits = hybrid_retrieve(question, collections, top_k, vector_store=vector_store, embedder=embedder)
+    """完整链路：混合检索（含可选精排）→ 组装提示词 → LLM 生成 → 引用溯源。"""
+    hits = hybrid_retrieve(question, collections, top_k,
+                           vector_store=vector_store, embedder=embedder, rerank=rerank)
     selected = _select_hits(hits, 4000)  # 与 prompt 同一编号切片，截断后引用不越界
     messages = build_answer_prompt(question, hits)
     chat = llm or get_gateway()

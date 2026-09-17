@@ -79,8 +79,10 @@ def hybrid_retrieve(
     *,
     vector_store=None,
     embedder=None,
+    rerank=None,
 ) -> list[RagHit]:
-    """混合检索：每个集合各做向量检索 + BM25，全部结果 RRF 融合。"""
+    """混合检索：每个集合各做向量检索 + BM25，全部结果 RRF 融合。
+    rerank 非空时：RRF 粗排取前 20 → 精排回 top_k（工单18 重排序链路）。"""
     vs = vector_store or get_vector_store()
     emb = embedder or get_embedder()
     qv = emb.embed_query(question)
@@ -95,4 +97,7 @@ def hybrid_retrieve(
         bhits = get_bm25_index(col.chunks).search(question, top_k)
         ranked.append(vhits)
         ranked.append(bhits)
-    return rrf_fuse(ranked)
+    fused = rrf_fuse(ranked)
+    if rerank is not None:
+        return rerank(question, fused[:20], top_k)
+    return fused
