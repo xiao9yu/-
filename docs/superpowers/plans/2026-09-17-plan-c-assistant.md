@@ -1371,7 +1371,7 @@ def test_ask_stream_error_event_on_llm_failure(tmp_path, db, monkeypatch):
     assert "DEEPSEEK_API_KEY" in out
 ```
 
-`backend/app/services/kb_service.py` 追加（import 区加 `import json`、`from ..services.llm_gateway import LLMError, get_gateway`、`from ..services.rag import KBCollection, hybrid_retrieve`、`from ..services.rag_ask import _select_hits, build_answer_prompt`、`from ..services.parser.chunk import Chunk`、`from typing import Iterator`）：
+`backend/app/services/kb_service.py` 追加（import 区加 `import json`、`import logging`、`from ..services.llm_gateway import LLMError, get_gateway`、`from ..services.rag import KBCollection, hybrid_retrieve`、`from ..services.rag_ask import _select_hits, build_answer_prompt`、`from ..services.parser.chunk import Chunk`、`from typing import Iterator`；`PUBLIC_COLLECTION` 后加 `logger = logging.getLogger("kb_service")`）：
 
 ```python
 def ask_stream(question: str, user: User, db: Session, *,
@@ -1416,6 +1416,10 @@ def ask_stream(question: str, user: User, db: Session, *,
         yield sse("error", {"message": str(exc)})
     except BizError as exc:
         yield sse("error", {"message": exc.message})
+    except Exception:
+        # 兜底：向量库检索故障/精排期异常等未预期错误也按协议发 error，不截断流（复审修复）
+        logger.exception("知识库问答流异常")
+        yield sse("error", {"message": "问答服务异常，请稍后重试"})
 
 
 def _load_collections(user: User, db: Session) -> list[KBCollection]:
