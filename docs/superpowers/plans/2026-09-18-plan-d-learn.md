@@ -1189,6 +1189,7 @@ git -c user.name="huqiaoyu" -c user.email="huqiaoyu@local" commit -m "feat(learn
   - 常量：`ACC_UP_THRESHOLD = 0.8`、`ACC_DOWN_THRESHOLD = 0.5`、`ROLLING_WINDOW = 10`、`DIFFICULTIES = ["易", "中", "难"]`
   - `collect_questions(db, *, course_id=None, kp=None, difficulty=None) -> list[dict]`（含 lesson_id 键）
   - `find_question(db, lesson_id, stem) -> dict`（含答案）
+  - `check_answer(q: dict, answer: str | None) -> bool`（答案归一化比对：接受裸字母或完整选项文本，空答案判错；Task 6 诊断路由复用）
   - `diagnostic_questions(db, *, course_id=None, count=10) -> list[dict]`（不带答案）
   - `next_question(user, kp, db, *, course_id=None) -> dict`（不带答案；返回 `difficulty` 为题面难度）
   - `submit_answer(user, lesson_id, stem, answer, db, llm=None) -> dict`
@@ -1372,6 +1373,18 @@ def test_submit_auto_registers_unknown_kp(db, user, seeded):
         user, seeded["lesson"].id, "梯度下降题0", "A", db, llm=FakeLLM())
     assert result["correct"] is True
     assert db.query(KnowledgePoint).filter(KnowledgePoint.name == "梯度下降").count() == 1
+
+
+def test_submit_accepts_full_option_text(db, user, seeded):
+    """前端单选绑定整段选项文本（"A.a"）→ 后端按选项前缀字母归一化比对。"""
+    q = learn_practice.find_question(db, seeded["lesson"].id, "梯度下降题0")
+    assert learn_practice.check_answer(q, "A.a") is True
+    assert learn_practice.check_answer(q, "B.b") is False
+    assert learn_practice.check_answer(q, None) is False  # 空答案判错不抛错
+    assert learn_practice.check_answer(q, "") is False
+    result = learn_practice.submit_answer(
+        user, seeded["lesson"].id, "梯度下降题0", "A.a", db, llm=FakeLLM())
+    assert result["correct"] is True
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -1395,6 +1408,7 @@ Expected: FAIL（ImportError：app.services.learn_practice 不存在）
 """
 import logging
 import random
+import re
 
 from sqlalchemy.orm import Session
 
@@ -1411,6 +1425,19 @@ ACC_UP_THRESHOLD = 0.8     # 滚动正确率 >80% 升难度
 ACC_DOWN_THRESHOLD = 0.5   # 滚动正确率 <50% 降难度
 ROLLING_WINDOW = 10        # 难度判定窗口：最近 10 次练习
 DIFFICULTIES = ["易", "中", "难"]
+_OPTION_LETTER = re.compile(r"^([A-Za-z])[.、．:：)）]")
+
+
+def _lesson_items(lesson: Lesson) -> list[dict]:
+    """提取 lesson 内的题目列表：习题集取"习题"，月考题展开"大题"下的"题目"。
+
+    （评审修复：抽题与定位共用同一提取逻辑，避免两处逐字重复漂移——
+    serve/submit 口径不一致会让答对的题被判"试题不存在"。）
+    """
+    content = lesson.content_json or {}
+    if lesson.lesson_type == "exercises":
+        return content.get("习题", [])
+    return [q for s in content.get("大题", []) for q in s.get("题目", [])]
 
 
 def collect_questions(db: Session, *, course_id: int | None = None,
@@ -1425,12 +1452,7 @@ def collect_questions(db: Session, *, course_id: int | None = None,
         query = query.filter(Lesson.course_id == course_id)
     questions = []
     for lesson in query.all():
-        content = lesson.content_json or {}
-        if lesson.lesson_type == "exercises":
-            items = content.get("习题", [])
-        else:
-            items = [q for s in content.get("大题", []) for q in s.get("题目", [])]
-        for q in items:
+        for q in _lesson_items(lesson):
             if not isinstance(q, dict) or not q.get("题干") or not q.get("选项"):
                 continue  # 简答题无选项，练习只取选择题
             if kp is not None and q.get("知识点") != kp:
@@ -1446,15 +1468,28 @@ def find_question(db: Session, lesson_id: int, stem: str) -> dict:
     lesson = db.get(Lesson, lesson_id)
     if lesson is None:
         raise BizError(404, "试题不存在")
-    content = lesson.content_json or {}
-    if lesson.lesson_type == "exercises":
-        items = content.get("习题", [])
-    else:
-        items = [q for s in content.get("大题", []) for q in s.get("题目", [])]
-    for q in items:
+    for q in _lesson_items(lesson):
         if isinstance(q, dict) and q.get("题干") == stem:
             return q
     raise BizError(404, "试题不存在（可能已被修改，请重新获取练习题）")
+
+
+def check_answer(q: dict, answer: str | None) -> bool:
+    """判定学生答案：接受裸字母（如 "A"）或完整选项文本（如 "A.学习率"）。
+
+    前端单选绑定整段选项文本；后端按选项前缀字母归一化比对（防作弊仍在后端）。
+    空答案一律判错（防御性，路由层已拦截空提交）。
+    """
+    given = (answer or "").strip().upper()
+    expected = str(q.get("答案", "")).strip().upper()
+    if given == expected:
+        return True
+    for opt in q.get("选项", []) or []:
+        text = str(opt).strip()
+        m = _OPTION_LETTER.match(text)
+        if m and m.group(1).upper() == expected and text.upper() == given:
+            return True
+    return False
 
 
 def diagnostic_questions(db: Session, *, course_id: int | None = None,
@@ -1538,7 +1573,7 @@ def submit_answer(user: User, lesson_id: int, stem: str, answer: str,
                   db: Session, llm: LLMGateway | None = None) -> dict:
     """提交练习答案：后端比对 → 画像事件（对 +10/错 -15）→ 难度调整 → 错题入册+AI 解析。"""
     q = find_question(db, lesson_id, stem)
-    correct = answer.strip().upper() == str(q.get("答案", "")).strip().upper()
+    correct = check_answer(q, answer)
     kp_name = q.get("知识点") or "未分类知识点"
     kp = learn_profile.get_or_create_kp(db, kp_name)
     delta = (learn_profile.DELTA_PRACTICE_CORRECT if correct
@@ -1563,7 +1598,7 @@ def submit_answer(user: User, lesson_id: int, stem: str, answer: str,
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && python -m pytest tests/test_learn_practice.py -v`
-Expected: PASS（8 passed）
+Expected: PASS（9 passed）
 
 - [ ] **Step 5: 提交**
 
@@ -1962,8 +1997,7 @@ def submit_diagnostic(data: DiagnosticIn, user: User = Depends(_student),
             raise BizError(400, "答题与题库不匹配，请重新开始诊断测试")
         stats.append({
             "knowledge_point": q.get("知识点") or "未分类知识点",
-            "correct": (a.get("answer") or "").strip().upper()
-            == str(q.get("答案", "")).strip().upper(),
+            "correct": learn_practice.check_answer(q, a.get("answer")),
         })
     return learn_profile.init_from_diagnostic(user, stats, db)
 
