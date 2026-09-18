@@ -21,9 +21,8 @@
         <el-menu-item index="/module/assistant">
           <el-icon><ChatDotRound /></el-icon><span>智能助教</span>
         </el-menu-item>
-        <el-menu-item index="/module/learn">
+        <el-menu-item v-if="auth.user?.role === 'student'" index="/module/learn">
           <el-icon><DataAnalysis /></el-icon><span>个性化学习</span>
-          <el-tag size="small" class="soon-tag" effect="plain">规划</el-tag>
         </el-menu-item>
       </el-menu>
 
@@ -156,13 +155,6 @@ function onLogout() { auth.logout(); router.push('/login') }
   color: #fff;
   font-weight: 600;
   box-shadow: inset 3px 0 0 var(--accent);
-}
-.soon-tag {
-  margin-left: auto;
-  --el-tag-bg-color: rgba(255, 255, 255, 0.08);
-  --el-tag-border-color: rgba(255, 255, 255, 0.15);
-  --el-tag-text-color: rgba(255, 255, 255, 0.45);
-  font-size: 10px;
 }
 
 .side-foot {

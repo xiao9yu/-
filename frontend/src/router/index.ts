@@ -15,6 +15,7 @@ const router = createRouter({
         { path: 'prep/course/:id', component: () => import('@/views/prep/PrepCourseView.vue') },
         { path: 'prep/lesson/:id', component: () => import('@/views/prep/PrepEditorView.vue') },
         { path: 'module/assistant', component: () => import('@/views/assistant/AssistantView.vue') },
+        { path: 'module/learn', component: () => import('@/views/learn/LearnView.vue') },
         { path: 'module/:name', component: () => import('@/views/PlaceholderView.vue') },
       ],
     },
