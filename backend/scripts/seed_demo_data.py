@@ -16,7 +16,8 @@ from pymupdf import open as open_pdf
 from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
 from app.models.file import FileRecord
-from app.models.prep import Course, CourseFile
+from app.models.learn import KnowledgePoint, KpPrereq
+from app.models.prep import Course, CourseFile, Lesson
 from app.models.user import Role, User
 from app.services.file_service import save_upload
 
@@ -185,6 +186,108 @@ def make_demo_files() -> None:
     print("演示文件已生成：", DEMO_DIR)
 
 
+# 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19)
+LEARN_KPS = [
+    ("Python基础", "Python 语法与常用库入门"),
+    ("线性代数", "向量、矩阵运算与线性变换"),
+    ("概率统计", "概率分布与统计推断基础"),
+    ("梯度下降", "沿负梯度方向迭代更新参数的最优化算法"),
+    ("线性回归", "拟合特征与目标间线性关系的回归模型"),
+    ("逻辑回归", "对数几率模型，解决二分类问题"),
+    ("决策树", "基于特征划分的树形分类模型"),
+    ("神经网络", "多层神经元连接构成的学习模型"),
+    ("反向传播", "链式法则逐层计算梯度的训练算法"),
+    ("深度学习基础", "多层神经网络的训练与调优"),
+    ("卷积神经网络", "卷积+池化提取空间特征的深度网络"),
+    ("自然语言处理", "让计算机理解与生成自然语言的技术"),
+]
+
+LEARN_PREREQS = [
+    ("梯度下降", "Python基础"), ("梯度下降", "线性代数"),
+    ("线性回归", "梯度下降"), ("线性回归", "Python基础"),
+    ("逻辑回归", "线性回归"),
+    ("决策树", "概率统计"),
+    ("反向传播", "梯度下降"),
+    ("神经网络", "线性回归"), ("神经网络", "反向传播"),
+    ("深度学习基础", "神经网络"),
+    ("卷积神经网络", "深度学习基础"),
+    ("自然语言处理", "深度学习基础"),
+]
+
+
+def _ex(stem, answer, kp, diff, analysis):
+    """演示习题工厂：题干/选项/答案/解析/知识点/难度。"""
+    return {"题干": stem, "选项": ["A.学习率", "B.批量大小", "C.迭代次数", "D.正则化系数"],
+            "答案": answer, "解析": analysis, "知识点": kp, "难度": diff}
+
+
+LEARN_EXERCISES = [
+    _ex("Python 中定义函数使用的关键字是？", "A", "Python基础", "易",
+        "Python 用 def 关键字定义函数（A 是虚构选项），func/function/define 均不是关键字。"),
+    _ex("两个矩阵能够相乘的前提是？", "A", "线性代数", "易",
+        "矩阵乘法要求左矩阵列数等于右矩阵行数。"),
+    _ex("事件发生的概率取值范围是？", "A", "概率统计", "易",
+        "概率取值恒在 [0,1] 区间。"),
+    _ex("梯度下降算法中控制每次更新步长的参数是？", "A", "梯度下降", "易",
+        "学习率控制参数每次更新的步长。"),
+    _ex("梯度下降中参数更新方向是？", "A", "梯度下降", "易",
+        "沿损失函数的负梯度方向迭代更新参数，损失逐步减小。"),
+    _ex("学习率过大会导致什么？", "B", "梯度下降", "中",
+        "学习率过大步长过大，损失会震荡甚至发散；过小则收敛缓慢。"),
+    _ex("关于批量梯度下降与小批量梯度下降，说法正确的是？", "A", "梯度下降", "难",
+        "批量梯度下降每步使用全部样本、计算开销大；小批量是折中方案，不保证一定更快收敛。"),
+    _ex("以下哪个场景最适合线性回归？", "A", "线性回归", "易",
+        "线性回归拟合连续值，典型场景是房价预测。"),
+    _ex("线性回归常用的损失函数是？", "A", "线性回归", "中",
+        "线性回归用均方误差（MSE）衡量预测与真实值的差距。"),
+    _ex("多元线性回归中特征存在高度共线性，通常会导致？", "A", "线性回归", "难",
+        "共线性使系数估计不稳定（方差大），不影响模型可训练性。"),
+    _ex("逻辑回归主要用于解决什么问题？", "A", "逻辑回归", "易",
+        "逻辑回归是对数几率模型，解决二分类问题。"),
+    _ex("逻辑回归把线性输出映射到 0~1 区间的函数是？", "A", "逻辑回归", "中",
+        "Sigmoid 函数把任意实数映射到 (0,1)，输出即概率。"),
+    _ex("决策树中用于选择划分特征的主要指标是？", "A", "决策树", "易",
+        "决策树按信息增益（或基尼指数）选择划分特征。"),
+    _ex("以下哪个不是常用的激活函数？", "C", "神经网络", "中",
+        "ReLU/Sigmoid/Tanh 都是常用激活函数；恒等函数无非线性，不常用作隐藏层激活。"),
+    _ex("反向传播算法利用什么法则逐层计算梯度？", "A", "反向传播", "中",
+        "反向传播利用链式法则逐层计算梯度，与梯度下降配合更新参数。"),
+    _ex("深度学习中的“深度”主要指什么？", "A", "深度学习基础", "易",
+        "深度指网络层数多（多层非线性变换）。"),
+    _ex("卷积神经网络中池化层的主要作用是？", "A", "卷积神经网络", "中",
+        "池化层降低特征维度、保留主要特征并提升平移不变性。"),
+    _ex("以下哪个任务属于自然语言处理？", "A", "自然语言处理", "中",
+        "情感分析是典型 NLP 任务；图像分割属 CV、语音降噪属语音、路径规划属搜索。"),
+]
+
+
+def seed_learn_demo(db) -> None:
+    """个性化学习演示数据：知识图谱（12 知识点+前置关系）+ 演示习题集（18 题，覆盖全部知识点）。幂等。"""
+    if db.query(KnowledgePoint).count() > 0:
+        print("知识图谱已有数据，跳过")
+    else:
+        kp_by_name = {}
+        for name, desc in LEARN_KPS:
+            kp = KnowledgePoint(name=name, description=desc)
+            db.add(kp)
+            db.flush()
+            kp_by_name[name] = kp.id
+        for kp_name, pre_name in LEARN_PREREQS:
+            db.add(KpPrereq(kp_id=kp_by_name[kp_name], prereq_kp_id=kp_by_name[pre_name]))
+        db.commit()
+        print("知识图谱已就绪：12 个知识点 + 前置关系")
+    course = db.query(Course).filter(Course.name == "人工智能导论").first()
+    if course is not None:
+        exists = (db.query(Lesson).filter(Lesson.title == "个性化学习演示习题",
+                                          Lesson.course_id == course.id).first())
+        if exists is None:
+            db.add(Lesson(course_id=course.id, title="个性化学习演示习题",
+                          lesson_type="exercises", content_json={"习题": LEARN_EXERCISES},
+                          version=1, created_by=course.owner_id))
+            db.commit()
+            print("个性化学习演示习题集已就绪：18 题（覆盖全部知识点）")
+
+
 if __name__ == "__main__":
     Base.metadata.create_all(engine)
     db = SessionLocal()
@@ -193,6 +296,7 @@ if __name__ == "__main__":
         make_demo_files()
         seed_prep_demo(db)
         seed_kb_demo(db)
+        seed_learn_demo(db)
         print("演示账号：admin/admin123(管理员) teacher/teacher123(教师) student/student123(学生) counselor/counselor123(就业指导)")
     finally:
         db.close()
