@@ -154,9 +154,19 @@ def record_ask_events(user: User, question: str, db: Session) -> int:
 
 
 def get_profile(user: User, db: Session) -> dict:
-    """画像雷达数据：全图谱知识点 + 掌握度（无记录=0，已含时间衰减）。"""
+    """画像雷达数据：全图谱知识点 + 掌握度（无记录=0，已含时间衰减）。
+
+    初始化判定：存在 diagnostic/import 事件才算已初始化（评审修复）——
+    仅练习/提问事件也会产生画像行，但按模型文档语义"未做诊断测试/导入"不算初始化，
+    否则学生跳过诊断引导直接看到全零雷达。
+    """
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if profile is None:
+        return {"initialized": False, "kps": [], "created_at": None}
+    has_init = (db.query(LearnEvent)
+                .filter(LearnEvent.user_id == user.id,
+                        LearnEvent.event_type.in_(["diagnostic", "import"])).count() > 0)
+    if not has_init:
         return {"initialized": False, "kps": [], "created_at": None}
     now = _now()
     rows = {r.kp_id: r for r in db.query(ProfileKp).filter(ProfileKp.profile_id == profile.id).all()}

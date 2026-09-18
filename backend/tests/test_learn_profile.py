@@ -45,6 +45,8 @@ def test_decay_math(db, user):
     profile = learn_profile.ensure_profile(user, db)
     db.add(ProfileKp(profile_id=profile.id, kp_id=kp.id, mastery=100.0,
                      difficulty="易", last_updated=NAIVE_UTC - timedelta(days=2)))
+    # 补初始化事件（仅诊断/导入事件才算初始化，该事件不触碰掌握度）
+    db.add(LearnEvent(user_id=user.id, event_type="diagnostic", kp_id=kp.id, delta=0.0))
     db.commit()
     data = learn_profile.get_profile(user, db)
     assert abs(data["kps"][0]["mastery"] - 90.25) < 0.01
@@ -117,8 +119,10 @@ def test_get_profile_uninitialized(db, user):
 
 
 def test_get_profile_missing_kp_is_zero(db, user):
-    _kp(db, "梯度下降")
+    kp = _kp(db, "梯度下降")
     profile = learn_profile.ensure_profile(user, db)
+    # 补初始化事件（仅诊断/导入事件才算初始化）
+    db.add(LearnEvent(user_id=user.id, event_type="import", kp_id=kp.id, delta=0.0))
     db.commit()
     data = learn_profile.get_profile(user, db)
     assert data["initialized"] is True
@@ -157,3 +161,13 @@ def test_similar_students_cosine_and_privacy(db, user):
     # 仅返回"对方掌握而我未掌握"的知识点名（不泄露对方完整画像）
     assert r["strengths"] == ["线性回归"]
     assert "mastery" not in r
+
+
+def test_initialized_requires_diagnostic_or_import(db, user):
+    """仅有练习/提问事件产生的画像行不算初始化（未做诊断/导入仍引导诊断测试）。"""
+    kp = _kp(db)
+    learn_profile.apply_event(user, kp, learn_profile.DELTA_ASK, db, event_type="ask")
+    db.commit()
+    assert learn_profile.get_profile(user, db)["initialized"] is False
+    learn_profile.init_from_import(user, [kp.name], 70.0, db)
+    assert learn_profile.get_profile(user, db)["initialized"] is True
