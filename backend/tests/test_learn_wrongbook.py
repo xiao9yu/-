@@ -85,6 +85,17 @@ def test_add_wrong_question_bad_structure_keeps_record(db, user):
     assert wq2.status == "failed"
 
 
+def test_variant_item_missing_fields_keeps_record_failed(db, user):
+    """变式题条目缺字段（题干/选项/答案/解析）→ 同样保留错题并置 failed。"""
+    bad = {"解析": "x", "错误原因": "y", "变式题": [
+        {"题干": "v1", "选项": ["A", "B"], "答案": "A", "解析": ""},
+        {"题干": "v2", "选项": ["A", "B"], "答案": "A"},  # 缺解析
+    ]}
+    wq = learn_wrongbook.add_wrong_question(user, db=db, llm=FakeLLM(bad), **_kwargs())
+    assert wq.status == "failed"
+    assert wq.analysis == "" and wq.variants == []
+
+
 def test_list_and_regenerate(db, user):
     wq = learn_wrongbook.add_wrong_question(
         user, db=db, llm=FakeLLM(LLMError("未配置")), **_kwargs())
