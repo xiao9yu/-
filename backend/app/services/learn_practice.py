@@ -96,12 +96,9 @@ def diagnostic_questions(db: Session, *, course_id: int | None = None,
         idx += 1
         if not progressed:
             break
-    # 英文键供前端接口（Task 6 Question 结构）使用；保留中文键与题库原始字段口径一致，
-    # 便于诊断题直接透传展示。答案/解析一律剔除（防前端作弊）。
+    # 输出英文字段（Task 6 API 与前端 Question 结构契约）；答案/解析一律剔除（防前端作弊）
     return [{"lesson_id": q["lesson_id"], "stem": q["题干"], "options": q["选项"],
-             "knowledge_point": q["知识点"], "difficulty": q["难度"],
-             "题干": q["题干"], "选项": q["选项"], "知识点": q["知识点"],
-             "难度": q["难度"]} for q in picked]
+             "knowledge_point": q["知识点"], "difficulty": q["难度"]} for q in picked]
 
 
 def _profile_row(user: User, kp: KnowledgePoint, db: Session) -> ProfileKp:

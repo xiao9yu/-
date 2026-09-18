@@ -92,9 +92,9 @@ def test_diagnostic_questions_no_answer_and_coverage(db, seeded):
     qs = learn_practice.diagnostic_questions(db)
     assert 1 < len(qs) <= 10
     assert all("答案" not in q and "解析" not in q for q in qs)
-    stems = [q["题干"] for q in qs]
+    stems = [q["stem"] for q in qs]  # 接口字段为英文键（Task 6/前端契约）
     assert len(stems) == len(set(stems))
-    kps = {q["知识点"] for q in qs}
+    kps = {q["knowledge_point"] for q in qs}
     assert "线性回归" in kps  # 覆盖不同知识点（轮询取样）
     # count=1 → 只取 1 题
     qs2 = learn_practice.diagnostic_questions(db, count=1)
