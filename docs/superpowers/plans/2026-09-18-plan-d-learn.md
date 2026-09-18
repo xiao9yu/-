@@ -1004,6 +1004,17 @@ def test_add_wrong_question_bad_structure_keeps_record(db, user):
     assert wq2.status == "failed"
 
 
+def test_variant_item_missing_fields_keeps_record_failed(db, user):
+    """变式题条目缺字段（题干/选项/答案/解析）→ 同样保留错题并置 failed。"""
+    bad = {"解析": "x", "错误原因": "y", "变式题": [
+        {"题干": "v1", "选项": ["A", "B"], "答案": "A", "解析": ""},
+        {"题干": "v2", "选项": ["A", "B"], "答案": "A"},  # 缺解析
+    ]}
+    wq = learn_wrongbook.add_wrong_question(user, db=db, llm=FakeLLM(bad), **_kwargs())
+    assert wq.status == "failed"
+    assert wq.analysis == "" and wq.variants == []
+
+
 def test_list_and_regenerate(db, user):
     wq = learn_wrongbook.add_wrong_question(
         user, db=db, llm=FakeLLM(LLMError("未配置")), **_kwargs())
@@ -1046,8 +1057,8 @@ Expected: FAIL（ImportError：app.services.learn_wrongbook 不存在）
 """AIGC 错题本服务：答错登记 + DeepSeek 生成（解析/错误原因/变式题）。
 
 口径：答题提交时同步生成；LLM 失败错题保留（status=failed），接口正常返回，
-前端错题本提供"重新生成"按钮。prompt 结构按验收要求：原题干+错误答案+正确答案+
-知识点+常见错误类型 → 解析 + 错误原因 + 2~3 道变式题。
+前端错题本提供"重新生成"按钮。prompt 结构按验收要求：原题干+选项+学生答案+
+正确答案+知识点+难度 → 解析 + 错误原因 + 2~3 道变式题。
 """
 import logging
 
@@ -1093,7 +1104,30 @@ def generate_analysis(wq: WrongQuestion, llm: LLMGateway | None = None) -> dict:
             raise BizError(502, f"错题解析生成结果缺少字段：{key}，请重试")
     if not isinstance(data["变式题"], list) or len(data["变式题"]) < 2:
         raise BizError(502, "错题解析生成的变式题不足 2 道，请重试")
+    for v in data["变式题"]:
+        if not isinstance(v, dict) or any(k not in v for k in ("题干", "选项", "答案", "解析")):
+            raise BizError(502, "错题解析生成的变式题结构不完整（缺题干/选项/答案/解析），请重试")
     return data
+
+
+def _generate_into(wq: WrongQuestion, llm: LLMGateway | None) -> None:
+    """生成解析并写入错题（评审修复：登记与重新生成共用，避免两处逐字重复漂移）。
+
+    失败（LLM 或结构不完整）：清空解析并置 failed——failed 语义 = 无有效解析，
+    避免"状态失败却残留旧内容"的不一致。
+    """
+    try:
+        data = generate_analysis(wq, llm)
+        wq.analysis = data["解析"]
+        wq.error_reason = data["错误原因"]
+        wq.variants = data["变式题"][:3]
+        wq.status = "generated"
+    except (LLMError, BizError) as exc:
+        logger.warning("错题 AI 解析生成失败：%s（错题已保留，可重新生成）", exc)
+        wq.analysis = ""
+        wq.error_reason = ""
+        wq.variants = []
+        wq.status = "failed"
 
 
 def add_wrong_question(user: User, *, stem: str, options: list, user_answer: str,
@@ -1105,15 +1139,7 @@ def add_wrong_question(user: User, *, stem: str, options: list, user_answer: str
                        difficulty=difficulty, status="pending")
     db.add(wq)
     db.flush()
-    try:
-        data = generate_analysis(wq, llm)
-        wq.analysis = data["解析"]
-        wq.error_reason = data["错误原因"]
-        wq.variants = data["变式题"][:3]
-        wq.status = "generated"
-    except (LLMError, BizError) as exc:
-        logger.warning("错题 AI 解析生成失败：%s（错题已保留）", exc)
-        wq.status = "failed"
+    _generate_into(wq, llm)
     db.commit()
     db.refresh(wq)
     return wq
@@ -1130,15 +1156,7 @@ def regenerate(user: User, wq_id: int, db: Session, llm: LLMGateway | None = Non
     wq = db.get(WrongQuestion, wq_id)
     if wq is None or wq.user_id != user.id:
         raise BizError(404, "错题不存在")
-    try:
-        data = generate_analysis(wq, llm)
-        wq.analysis = data["解析"]
-        wq.error_reason = data["错误原因"]
-        wq.variants = data["变式题"][:3]
-        wq.status = "generated"
-    except (LLMError, BizError) as exc:
-        logger.warning("错题重新生成失败：%s", exc)
-        wq.status = "failed"
+    _generate_into(wq, llm)
     db.commit()
     db.refresh(wq)
     return wq
