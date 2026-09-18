@@ -62,7 +62,9 @@ def db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'learn.db'}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    yield Session()
+    s = Session()
+    yield s
+    s.close()  # 先关 Session 再 drop_all，避免 Windows SQLite 文件锁
     Base.metadata.drop_all(engine)
 
 
@@ -297,7 +299,9 @@ def db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'graph.db'}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    yield Session()
+    s = Session()
+    yield s
+    s.close()  # 先关 Session 再 drop_all，避免 Windows SQLite 文件锁
     Base.metadata.drop_all(engine)
 
 
@@ -496,7 +500,9 @@ def db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'profile.db'}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    yield Session()
+    s = Session()
+    yield s
+    s.close()  # 先关 Session 再 drop_all，避免 Windows SQLite 文件锁导致 teardown 报错
     Base.metadata.drop_all(engine)
 
 
@@ -521,6 +527,8 @@ def test_decay_math(db, user):
     profile = learn_profile.ensure_profile(user, db)
     db.add(ProfileKp(profile_id=profile.id, kp_id=kp.id, mastery=100.0,
                      difficulty="易", last_updated=NAIVE_UTC - timedelta(days=2)))
+    # 补初始化事件（仅诊断/导入事件才算初始化，该事件不触碰掌握度）
+    db.add(LearnEvent(user_id=user.id, event_type="diagnostic", kp_id=kp.id, delta=0.0))
     db.commit()
     data = learn_profile.get_profile(user, db)
     assert abs(data["kps"][0]["mastery"] - 90.25) < 0.01
@@ -593,8 +601,10 @@ def test_get_profile_uninitialized(db, user):
 
 
 def test_get_profile_missing_kp_is_zero(db, user):
-    _kp(db, "梯度下降")
+    kp = _kp(db, "梯度下降")
     profile = learn_profile.ensure_profile(user, db)
+    # 补初始化事件（仅诊断/导入事件才算初始化）
+    db.add(LearnEvent(user_id=user.id, event_type="import", kp_id=kp.id, delta=0.0))
     db.commit()
     data = learn_profile.get_profile(user, db)
     assert data["initialized"] is True
@@ -633,6 +643,16 @@ def test_similar_students_cosine_and_privacy(db, user):
     # 仅返回"对方掌握而我未掌握"的知识点名（不泄露对方完整画像）
     assert r["strengths"] == ["线性回归"]
     assert "mastery" not in r
+
+
+def test_initialized_requires_diagnostic_or_import(db, user):
+    """仅有练习/提问事件产生的画像行不算初始化（未做诊断/导入仍引导诊断测试）。"""
+    kp = _kp(db)
+    learn_profile.apply_event(user, kp, learn_profile.DELTA_ASK, db, event_type="ask")
+    db.commit()
+    assert learn_profile.get_profile(user, db)["initialized"] is False
+    learn_profile.init_from_import(user, [kp.name], 70.0, db)
+    assert learn_profile.get_profile(user, db)["initialized"] is True
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -801,16 +821,26 @@ def record_ask_events(user: User, question: str, db: Session) -> int:
 
 
 def get_profile(user: User, db: Session) -> dict:
-    """画像雷达数据：全图谱知识点 + 掌握度（无记录=0，已含时间衰减）。"""
+    """画像雷达数据：全图谱知识点 + 掌握度（无记录=0，已含时间衰减）。
+
+    初始化判定：存在 diagnostic/import 事件才算已初始化——仅练习/提问事件也会产生
+    画像行，但按模型文档语义"未做诊断测试/导入"不算初始化，否则学生跳过诊断引导
+    直接看到全零雷达。
+    """
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if profile is None:
+        return {"initialized": False, "kps": [], "created_at": None}
+    has_init = (db.query(LearnEvent)
+                .filter(LearnEvent.user_id == user.id,
+                        LearnEvent.event_type.in_(["diagnostic", "import"])).count() > 0)
+    if not has_init:
         return {"initialized": False, "kps": [], "created_at": None}
     now = _now()
     rows = {r.kp_id: r for r in db.query(ProfileKp).filter(ProfileKp.profile_id == profile.id).all()}
     kps = []
     for kp in db.query(KnowledgePoint).order_by(KnowledgePoint.id).all():
         row = rows.get(kp.id)
-        mastery = round(_decayed(row.mastery, row.last_updated, now), 1) if row else 0.0
+        mastery = round(_decayed(row.mastery, row.last_updated, now), 2) if row else 0.0
         kps.append({"kp_id": kp.id, "name": kp.name, "mastery": mastery})
     return {"initialized": True, "kps": kps,
             "created_at": profile.created_at.replace(tzinfo=None).isoformat()}
@@ -926,7 +956,9 @@ def db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'wrongbook.db'}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    yield Session()
+    s = Session()
+    yield s
+    s.close()  # 先关 Session 再 drop_all，避免 Windows SQLite 文件锁
     Base.metadata.drop_all(engine)
 
 
@@ -1176,7 +1208,9 @@ def db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'practice.db'}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    yield Session()
+    s = Session()
+    yield s
+    s.close()  # 先关 Session 再 drop_all，避免 Windows SQLite 文件锁
     Base.metadata.drop_all(engine)
 
 
@@ -2681,6 +2715,7 @@ Expected: 输出"知识图谱已就绪…"与"个性化学习演示习题集已�
 7. **画像公式**：时间衰减每天 ×0.95；练习答对 +10、答错 -15、提问 +2；未掌握阈值 60；难度档 易/中/难，滚动最近 10 次正确率（样本不足 5 不调整）>0.8 升档、<0.5 降档。
 8. **相似学生隐私**：仅返回姓名与"对方掌握而我未掌握"的知识点名，不返回对方完整画像（设计文档 §331）。
 9. **诊断测试口径**：默认 10 题（不足取全部）、易/中优先、题干去重、轮询覆盖知识点；初始画像=每知识点正确率×100 直接赋值。
+10. **初始化判定**：存在诊断/导入事件才算画像已初始化；仅练习/提问产生的画像行不视为初始化（前端仍引导诊断测试）。
 
 ## 三、测试结果汇总
 
