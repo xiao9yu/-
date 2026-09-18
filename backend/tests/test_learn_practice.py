@@ -172,3 +172,15 @@ def test_submit_auto_registers_unknown_kp(db, user, seeded):
         user, seeded["lesson"].id, "梯度下降题0", "A", db, llm=FakeLLM())
     assert result["correct"] is True
     assert db.query(KnowledgePoint).filter(KnowledgePoint.name == "梯度下降").count() == 1
+
+
+def test_submit_accepts_full_option_text(db, user, seeded):
+    """前端单选绑定整段选项文本（"A.a"）→ 后端按选项前缀字母归一化比对。"""
+    q = learn_practice.find_question(db, seeded["lesson"].id, "梯度下降题0")
+    assert learn_practice.check_answer(q, "A.a") is True
+    assert learn_practice.check_answer(q, "B.b") is False
+    assert learn_practice.check_answer(q, None) is False  # 空答案判错不抛错
+    assert learn_practice.check_answer(q, "") is False
+    result = learn_practice.submit_answer(
+        user, seeded["lesson"].id, "梯度下降题0", "A.a", db, llm=FakeLLM())
+    assert result["correct"] is True
