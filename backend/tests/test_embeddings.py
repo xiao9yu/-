@@ -26,3 +26,31 @@ def test_embedder_load_failure_raises_friendly_error(monkeypatch):
     with pytest.raises(embeddings.EmbedderError, match="HF_ENDPOINT"):
         embeddings.get_embedder()
     monkeypatch.setattr(embeddings, "_embedder", None)
+
+
+def test_local_cache_ready_true_when_cached(monkeypatch):
+    """缓存齐备时返回 True（调用方以 local_files_only 离线加载）。"""
+    import huggingface_hub
+    from app.services.embeddings import local_cache_ready
+
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", lambda repo, f: "/fake/cached")
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    assert local_cache_ready("BAAI/bge-m3") is True
+
+
+def test_local_cache_ready_false_when_not_cached(monkeypatch):
+    """缓存缺失时返回 False（首次下载场景走在线路径）。"""
+    import huggingface_hub
+    from app.services.embeddings import local_cache_ready
+
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", lambda repo, f: None)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    assert local_cache_ready("BAAI/bge-m3") is False
+
+
+def test_local_cache_ready_respects_env_offline(monkeypatch):
+    """显式 HF_HUB_OFFLINE=1 时无条件返回 True。"""
+    from app.services.embeddings import local_cache_ready
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    assert local_cache_ready("BAAI/bge-m3") is True

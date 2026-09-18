@@ -3,6 +3,7 @@
 import logging
 import threading
 
+from .embeddings import local_cache_ready
 from .rag import RagHit
 
 logger = logging.getLogger("rerank")
@@ -10,9 +11,12 @@ logger = logging.getLogger("rerank")
 
 class Reranker:
     def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
+        # 缓存齐备时离线加载，避免 HF 网络重试拖慢首问（modules.json 缺失会自动
+        # 降级为 transformers 路径，本地 config.json+权重齐备即可加载）
+        local = local_cache_ready(model_name)
         from sentence_transformers import CrossEncoder
 
-        self.model = CrossEncoder(model_name)
+        self.model = CrossEncoder(model_name, local_files_only=local)
 
     def rerank(self, query: str, hits: list[RagHit], top_n: int = 5) -> list[RagHit]:
         """逐对打分（query, chunk.text）→ 按分降序取 top_n。"""

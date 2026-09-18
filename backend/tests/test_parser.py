@@ -106,6 +106,21 @@ def test_parse_image_ocr(monkeypatch, tmp_path):
     assert chunks[0].meta["image_path"] == str(path)
 
 
+def test_parse_txt_and_md(tmp_path):
+    """纯文本（txt/md）解析：UTF-8 与 GBK 编码、分块均正常。"""
+    path = tmp_path / "笔记.txt"
+    path.write_text("梯度下降是机器学习核心优化算法。", encoding="utf-8")
+    chunks = parse_document(path)
+    assert len(chunks) == 1 and chunks[0].kind == "text"
+    assert "梯度下降" in chunks[0].text and chunks[0].source == "笔记.txt"
+    md = tmp_path / "讲义.md"
+    md.write_text("# 标题\n\n反向传播基于链式法则计算梯度。", encoding="utf-8")
+    assert any("反向传播" in c.text for c in parse_document(md))
+    gbk = tmp_path / "旧笔记.txt"
+    gbk.write_bytes("学习率过大会导致训练发散。".encode("gb18030"))
+    assert any("学习率" in c.text for c in parse_document(gbk))
+
+
 def test_parse_unsupported_returns_empty(tmp_path):
     path = tmp_path / "x.xyz"
     path.write_text("abc")

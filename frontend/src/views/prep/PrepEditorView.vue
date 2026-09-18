@@ -1,42 +1,53 @@
 <!-- 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能备课任务(17) -->
 <template>
   <div>
-    <el-page-header :content="lesson?.title || '教案编辑'" @back="$router.push(`/prep/course/${lesson?.course_id}`)" />
+    <el-page-header class="page-header" :content="lesson?.title || '教案编辑'" @back="$router.push(`/prep/course/${lesson?.course_id}`)" />
     <el-row :gutter="16" style="margin-top: 16px">
       <el-col :span="17">
         <el-card>
           <template #header>
-            <div style="display: flex; justify-content: space-between; align-items: center">
-              <span>内容编辑</span>
+            <div class="card-head">
+              <span><el-icon class="head-icon"><EditPen /></el-icon>内容编辑</span>
               <div>
                 <!-- 导出按钮按教案类型显示（后端映射：docx←plan/case，pptx←cw，pdf←exercises/exam） -->
-                <el-button v-if="['plan', 'case'].includes(lesson?.lesson_type || '')" @click="onExport('docx')">导出 Word</el-button>
-                <el-button v-if="lesson?.lesson_type === 'cw'" @click="onExport('pptx')">导出 PPT</el-button>
-                <el-button v-if="['exercises', 'exam'].includes(lesson?.lesson_type || '')" @click="onExport('pdf')">导出 PDF</el-button>
+                <el-button v-if="['plan', 'case'].includes(lesson?.lesson_type || '')" @click="onExport('docx')">
+                  <el-icon class="btn-ico"><Download /></el-icon>导出 Word
+                </el-button>
+                <el-button v-if="lesson?.lesson_type === 'cw'" @click="onExport('pptx')">
+                  <el-icon class="btn-ico"><Download /></el-icon>导出 PPT
+                </el-button>
+                <el-button v-if="['exercises', 'exam'].includes(lesson?.lesson_type || '')" @click="onExport('pdf')">
+                  <el-icon class="btn-ico"><Download /></el-icon>导出 PDF
+                </el-button>
                 <el-button type="primary" :loading="saving" @click="onSave">保存（新版本）</el-button>
               </div>
             </div>
           </template>
-          <div style="border: 1px solid #ccc">
-            <Toolbar style="border-bottom: 1px solid #ccc" :editor="editorRef" :default-config="toolbarConfig" />
+          <div class="editor-frame">
+            <Toolbar style="border-bottom: 1px solid #eef0f6" :editor="editorRef" :default-config="toolbarConfig" />
             <Editor style="height: 480px; overflow-y: hidden" v-model="html" :default-config="editorConfig" @on-created="onCreated" />
           </div>
         </el-card>
       </el-col>
       <el-col :span="7">
         <el-card>
-          <template #header>资源引用（检索后一键插入）</template>
+          <template #header>
+            <div class="card-head"><el-icon class="head-icon"><Search /></el-icon>资源引用（检索后一键插入）</div>
+          </template>
           <el-input v-model="refQuery" placeholder="检索课程资源">
             <template #append><el-button :loading="refSearching" @click="onRefSearch">检索</el-button></template>
           </el-input>
-          <div v-for="h in refHits" :key="h.ref" style="margin-top: 10px; font-size: 13px">
-            <div><b>{{ h.ref }}</b></div>
-            <div style="color: #666">{{ h.excerpt }}</div>
-            <el-button size="small" type="text" @click="onInsertRef(h)">插入正文</el-button>
+          <div v-for="h in refHits" :key="h.ref" class="ref-hit">
+            <div class="ref-name"><b>{{ h.ref }}</b></div>
+            <div class="ref-excerpt">{{ h.excerpt }}</div>
+            <el-button size="small" text type="primary" @click="onInsertRef(h)">插入正文</el-button>
           </div>
+          <div v-if="!refHits.length" class="ref-empty">输入关键词检索课程资源，点击「插入正文」引用到编辑器中</div>
         </el-card>
         <el-card style="margin-top: 16px">
-          <template #header>版本历史</template>
+          <template #header>
+            <div class="card-head"><el-icon class="head-icon"><Clock /></el-icon>版本历史</div>
+          </template>
           <el-timeline>
             <el-timeline-item v-for="v in versions" :key="v.version" :timestamp="`v${v.version}`">
               <el-button size="small" @click="onRestore(v.version)">恢复此版本</el-button>
@@ -52,6 +63,7 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Clock, Download, EditPen, Search } from '@element-plus/icons-vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import {
@@ -184,3 +196,29 @@ async function onRestore(version: number) {
 onMounted(load)
 onBeforeUnmount(() => { editorRef.value?.destroy() })
 </script>
+
+<style scoped>
+.page-header { margin-bottom: 2px; }
+
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.head-icon { margin-right: 7px; color: var(--accent); }
+.btn-ico { margin-right: 5px; }
+
+.editor-frame {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ref-hit {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 13px;
+}
+.ref-name { display: flex; align-items: center; }
+.ref-excerpt { color: var(--text-2); margin-top: 4px; line-height: 1.6; }
+.ref-empty { font-size: 12px; color: var(--text-3); text-align: center; padding: 18px 0 6px; }
+</style>

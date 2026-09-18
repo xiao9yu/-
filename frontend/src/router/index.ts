@@ -6,13 +6,19 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('@/views/LoginView.vue') },
-    { path: '/', component: () => import('@/views/HomeView.vue') },
-    { path: '/prep', component: () => import('@/views/prep/PrepListView.vue') },
-    { path: '/prep/course/:id', component: () => import('@/views/prep/PrepCourseView.vue') },
-    { path: '/prep/lesson/:id', component: () => import('@/views/prep/PrepEditorView.vue') },
-    { path: '/module/assistant', component: () => import('@/views/assistant/AssistantView.vue') },
-    { path: '/module/:name', component: () => import('@/views/PlaceholderView.vue') }
-  ]
+    {
+      path: '/',
+      component: () => import('@/views/HomeView.vue'),
+      children: [
+        { path: '', component: () => import('@/views/DashboardView.vue') },
+        { path: 'prep', component: () => import('@/views/prep/PrepListView.vue') },
+        { path: 'prep/course/:id', component: () => import('@/views/prep/PrepCourseView.vue') },
+        { path: 'prep/lesson/:id', component: () => import('@/views/prep/PrepEditorView.vue') },
+        { path: 'module/assistant', component: () => import('@/views/assistant/AssistantView.vue') },
+        { path: 'module/:name', component: () => import('@/views/PlaceholderView.vue') },
+      ],
+    },
+  ],
 })
 
 router.beforeEach((to) => {
