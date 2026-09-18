@@ -100,8 +100,9 @@ def submit_diagnostic(data: DiagnosticIn, user: User = Depends(_student),
         raise BizError(400, "答案不能为空")
     stats = []
     for a in data.answers:
+        # a.get 兜底畸形条目（缺 lesson_id/stem）：找不到题走 BizError→400，而非 KeyError→500
         try:
-            q = learn_practice.find_question(db, a["lesson_id"], a["stem"])
+            q = learn_practice.find_question(db, a.get("lesson_id"), a.get("stem") or "")
         except BizError:
             raise BizError(400, "答题与题库不匹配，请重新开始诊断测试")
         stats.append({

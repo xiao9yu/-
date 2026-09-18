@@ -149,6 +149,11 @@ def test_diagnostic_partial_and_path_tasks(env):
                       json={"answers": [{"lesson_id": 1, "stem": "不存在", "answer": "A"}]},
                       headers=headers["student"])
     assert bad.status_code == 400
+    # 畸形条目（缺 lesson_id/stem）→ 400 而非 500（终审修复：KeyError 兜底）
+    bad = client.post("/api/learn/diagnostic",
+                      json={"answers": [{"answer": "A"}]},
+                      headers=headers["student"])
+    assert bad.status_code == 400
 
 
 def test_import_flow(env):
