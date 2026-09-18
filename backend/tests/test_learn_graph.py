@@ -16,7 +16,9 @@ def db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'graph.db'}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    yield Session()
+    s = Session()
+    yield s
+    s.close()  # 先关 Session 再 drop_all，避免 Windows SQLite 文件锁
     Base.metadata.drop_all(engine)
 
 
