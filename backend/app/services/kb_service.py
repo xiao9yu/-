@@ -24,6 +24,7 @@ from ..services.parser.chunk import Chunk
 from ..services.rag import KBCollection, hybrid_retrieve
 from ..services.rag_ask import _select_hits, build_answer_prompt
 from ..services.vector_store import VectorStore, get_vector_store
+from . import learn_profile
 
 PUBLIC_COLLECTION = "kb_public"
 
@@ -174,6 +175,12 @@ def ask_stream(question: str, user: User, db: Session, *,
         gw = gateway or get_gateway()
         for piece in gw.chat_stream(build_answer_prompt(question, hits)):
             yield sse("delta", {"text": piece})
+        # 工单19 画像迭代联动：学生提问命中知识点 → 记低权重事件（失败不影响问答流）
+        if user.role == Role.student:
+            try:
+                learn_profile.record_ask_events(user, question, db)
+            except Exception:
+                logger.exception("画像事件记录失败（问答不受影响）")
         yield sse("done", {})
     except EmbedderError as exc:
         yield sse("error", {"message": str(exc)})
