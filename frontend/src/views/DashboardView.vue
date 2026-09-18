@@ -81,12 +81,18 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 教育理念 -->
+    <div class="motto">
+      <el-icon><Sunny /></el-icon>
+      <span>因材施教，教学相长 —— 让每位教师都拥有 AI 助教，让每位学生都拥有 AI 学伴。</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive } from 'vue'
-import { ArrowRight, Calendar, ChatDotRound, Collection, DataAnalysis, Notebook } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, ChatDotRound, Collection, DataAnalysis, Notebook, Sunny } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { listCourses } from '@/api/prep'
 import { listKbDocuments } from '@/api/kb'
@@ -252,4 +258,20 @@ const tips = [
 }
 .tip-title { font-size: 14.5px; font-weight: 700; margin-top: 12px; }
 .tip-desc { font-size: 13px; color: var(--text-2); margin-top: 8px; line-height: 1.75; }
+
+/* ---------- 教育理念 ---------- */
+.motto {
+  margin-top: 22px;
+  padding: 15px 20px;
+  border-radius: 14px;
+  border: 1px dashed var(--border-strong);
+  background: linear-gradient(90deg, rgba(91, 91, 214, 0.06), rgba(76, 136, 220, 0.04));
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 13px;
+  color: var(--text-2);
+  letter-spacing: 0.5px;
+}
+.motto .el-icon { color: var(--accent); font-size: 17px; flex: none; }
 </style>

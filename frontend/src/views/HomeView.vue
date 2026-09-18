@@ -6,7 +6,7 @@
         <div class="brand-mark"><el-icon :size="20"><School /></el-icon></div>
         <div class="brand-text">
           <div class="brand-name">教育智能体</div>
-          <div class="brand-sub">EduAgent Platform</div>
+          <div class="brand-sub">AI × 教育 · EduAgent</div>
         </div>
       </div>
 
@@ -29,7 +29,8 @@
 
       <div class="side-foot">
         <div class="side-foot-line" />
-        <span>实训工单 16 ~ 20 · v0.2</span>
+        <div class="side-motto">因材施教 · 教学相长</div>
+        <div class="side-version">实训工单 16 ~ 20 · v0.2</div>
       </div>
     </el-aside>
 
@@ -174,6 +175,12 @@ function onLogout() { auth.logout(); router.push('/login') }
   background: rgba(255, 255, 255, 0.07);
   margin-bottom: 12px;
 }
+.side-motto {
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.side-version { color: rgba(255, 255, 255, 0.3); }
 
 /* ---------- 顶栏 ---------- */
 .body { background: var(--bg); }
