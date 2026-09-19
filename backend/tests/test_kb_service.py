@@ -260,3 +260,20 @@ class _FakeStore:
                 pos = self.ids[name].index(i)
                 del self.ids[name][pos]
                 del self.metas[name][pos]
+
+
+def test_answer_events_yields_event_tuples(tmp_path, db, monkeypatch):
+    """事件层重构：answer_events 输出 (事件名, 数据) 元组（WS 语音链路直接消费）。"""
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: _FakeStore(tmp_path))
+
+    class FakeGateway:
+        def chat_stream(self, messages, temperature=0.7):
+            yield "片段一"
+
+    monkeypatch.setattr(kb_service, "get_gateway", lambda: FakeGateway())
+    events = list(kb_service.answer_events("什么是梯度下降", _student(), db))
+    names = [e for e, _ in events]
+    assert names[0] == "citations"
+    assert ("delta", {"text": "片段一"}) in events
+    assert events[-1] == ("done", {})

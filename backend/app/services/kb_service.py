@@ -6,7 +6,7 @@
 """
 import json
 import logging
-from typing import Iterator
+from typing import Any, Iterator
 
 from fastapi import UploadFile
 from sqlalchemy import and_, or_
@@ -140,17 +140,12 @@ def delete_document(doc_id: int, user: User, upload_dir, db: Session,
     delete_file(file_id, upload_dir, db)
 
 
-def ask_stream(question: str, user: User, db: Session, *,
-               vector_store=None, embedder=None, reranker=None, gateway=None) -> Iterator[str]:
-    """流式问答（SSE 生成器）：检索（私有+公共）→ citations 事件 → LLM 逐段 delta → done。
+def answer_events(question: str, user: User, db: Session, *,
+                  vector_store=None, embedder=None, reranker=None, gateway=None) -> Iterator[tuple[str, Any]]:
+    """问答事件流（(事件名, 数据) 元组）：citations → delta* → done；失败发 error。
 
-    失败时发 event: error（检索/LLM 错误均不破坏流协议，前端按事件渲染）。
-    V1 单轮：不保存会话历史。
+    ask_stream 的 SSE 字符串仅是它的薄包装；WS 语音链路（api/voice.py）直接消费本生成器。
     """
-
-    def sse(event: str, data) -> str:
-        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
     try:
         # 经本模块 get_embedder 解析嵌入模型后显式传入 hybrid_retrieve：
         # 避免 rag 模块内部再走真实 bge-m3（测试 monkeypatch 本模块 get_embedder 即可覆盖全链路）
@@ -171,27 +166,40 @@ def ask_stream(question: str, user: User, db: Session, *,
             }
             for i, h in selected
         ]
-        yield sse("citations", citations)
+        yield ("citations", citations)
         gw = gateway or get_gateway()
         for piece in gw.chat_stream(build_answer_prompt(question, hits)):
-            yield sse("delta", {"text": piece})
+            yield ("delta", {"text": piece})
         # 工单19 画像迭代联动：学生提问命中知识点 → 记低权重事件（失败不影响问答流）
         if user.role == Role.student:
             try:
                 learn_profile.record_ask_events(user, question, db)
             except Exception:
                 logger.exception("画像事件记录失败（问答不受影响）")
-        yield sse("done", {})
+        yield ("done", {})
     except EmbedderError as exc:
-        yield sse("error", {"message": str(exc)})
+        yield ("error", {"message": str(exc)})
     except LLMError as exc:
-        yield sse("error", {"message": str(exc)})
+        yield ("error", {"message": str(exc)})
     except BizError as exc:
-        yield sse("error", {"message": exc.message})
+        yield ("error", {"message": exc.message})
     except Exception:
         # 兜底：向量库检索故障/精排期异常等未预期错误也按协议发 error，不截断流（复审 Important）
         logger.exception("知识库问答流异常")
-        yield sse("error", {"message": "问答服务异常，请稍后重试"})
+        yield ("error", {"message": "问答服务异常，请稍后重试"})
+
+
+def ask_stream(question: str, user: User, db: Session, *,
+               vector_store=None, embedder=None, reranker=None, gateway=None) -> Iterator[str]:
+    """流式问答（SSE 生成器）：answer_events 的 SSE 字符串包装（既有前端/测试契约不变）。"""
+
+    def sse(event: str, data) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    for event, data in answer_events(question, user, db,
+                                     vector_store=vector_store, embedder=embedder,
+                                     reranker=reranker, gateway=gateway):
+        yield sse(event, data)
 
 
 def _load_collections(user: User, db: Session) -> list[KBCollection]:
