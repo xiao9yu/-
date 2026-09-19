@@ -21,3 +21,5 @@ iniconfig>=2.0
 reportlab>=4.0
 networkx>=3.0
 numpy>=1.26
+funasr>=1.2
+torchaudio>=2.13

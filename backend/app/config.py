@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     vector_backend: str = "milvus"  # milvus | faiss
     milvus_uri: str = "./data/milvus.db"
+    # 数字人语音
+    asr_model: str = "paraformer-zh"
+    tts_voice: str = "zh-CN-XiaoxiaoNeural"
 
 
 settings = Settings()
