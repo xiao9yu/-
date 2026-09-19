@@ -19,7 +19,7 @@ ALLOWED_EXTS = {
     "md", "txt",
     # 图片
     "png", "jpg", "jpeg", "gif", "bmp",
-    # 音视频（工单17 多媒体、工单20 面试录音）
+    # 音视频（工单17 多媒体；工单20 已取消）
     "mp3", "wav", "m4a", "aac", "mp4", "webm",
 }
 
