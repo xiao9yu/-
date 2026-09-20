@@ -183,3 +183,42 @@ def test_ws_empty_transcript(env, monkeypatch):
         m = ws.receive_json()
         assert m["type"] == "error"
         assert "未识别到语音" in m["message"]
+
+
+def test_tts_requires_auth(env):
+    client, _ = env
+    resp = client.post("/api/voice/tts", json={"text": "你好"})
+    assert resp.status_code == 401
+
+
+def test_tts_returns_mp3(env, monkeypatch):
+    client, token = env
+    monkeypatch.setattr("app.services.tts_service._communicate", lambda t, v: b"mp3-bytes")
+    resp = client.post("/api/voice/tts", json={"text": "你好"},
+                       headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert resp.content == b"mp3-bytes"
+    assert resp.headers["content-type"] == "audio/mpeg"
+
+
+def test_tts_empty_text(env):
+    client, token = env
+    resp = client.post("/api/voice/tts", json={"text": "   "},
+                       headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 400
+
+
+def test_tts_unavailable_returns_502(env, monkeypatch):
+    client, token = env
+    # 偏离简报：tts_service 模块级 LRU 缓存会命中上一用例缓存的"你好"，
+    # 先清缓存，确保真正走到 _communicate 失败路径（否则 200 而非 502）
+    from app.services import tts_service
+    tts_service._cache.clear()
+
+    def boom(t, v):
+        raise RuntimeError("网络失败")
+
+    monkeypatch.setattr("app.services.tts_service._communicate", boom)
+    resp = client.post("/api/voice/tts", json={"text": "你好"},
+                       headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 502

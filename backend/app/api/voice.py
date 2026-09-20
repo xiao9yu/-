@@ -9,15 +9,18 @@ import base64
 import logging
 import threading
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Response, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..core.exceptions import BizError
 from ..core.security import decode_token
 from ..db import get_db
 from ..models.user import User
 from ..services import kb_service
 from ..services.asr_service import ASRUnavailableError, transcribe
 from ..services.tts_service import TTSUnavailableError, split_sentences, synthesize, synthesize_sentences
+from .deps import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger("voice")
@@ -184,3 +187,21 @@ async def voice_chat(ws: WebSocket, db: Session = Depends(get_db)):
         cancel.set()
         if drain_task is not None and not drain_task.done():
             drain_task.cancel()
+
+
+class TtsIn(BaseModel):
+    text: str
+
+
+@router.post("/tts")
+def tts(data: TtsIn, user: User = Depends(get_current_user)):
+    """打字朗读：整段文本合成 mp3。TTS 不可用回 502（前端 speakText 静默降级）。"""
+    text = data.text.strip()
+    if not text:
+        raise BizError(400, "文本不能为空")
+    if len(text) > 2000:
+        raise BizError(400, "文本过长（最多 2000 字）")
+    try:
+        return Response(content=synthesize(text), media_type="audio/mpeg")
+    except TTSUnavailableError as exc:
+        raise BizError(502, str(exc)) from exc
