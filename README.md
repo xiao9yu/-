@@ -71,7 +71,7 @@ cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-
 |---|---|---|
 | 16 | 需求分析与软件架构设计 | ✅ docs/工单16-教育智能体需求分析与软件架构设计.md |
 | 17 | 智能备课 | ✅ 课程/生成/编辑器/引用/导出/版本（Plan B） |
-| 18 | 智能助教（多模态RAG） | ✅ Plan C（数字人交互待嵌入） |
+| 18 | 智能助教（多模态RAG） | ✅ Plan C + 数字人交互（Plan E：语音问答/朗读/Live2D） |
 | 19 | 个性化学习推荐 | ✅ docs/工单19-个性化学习推荐-测试用例与结果.md |
 | 20 | 面试AI复盘 | ❌ 已取消（2026-09-19 用户决策） |
 
@@ -82,3 +82,12 @@ backend/app/{api,core,models,services} 后端分层
 frontend/src/{api,router,stores,views} 前端
 docs/ 工单文档与设计/计划
 ```
+
+## 数字人互动（智能助教内嵌）
+
+- 语音问答：助教页按住说话 → FunASR 本地转写（paraformer-zh，录音不出本机）→ 知识库 RAG → edge-tts 分句朗读，Live2D 形象音量驱动口型；播报中可一键打断
+- 打字朗读：文字问答的回答默认朗读，右上角开关可静音
+- 依赖：`pip install -r requirements.txt`（funasr/kaldi-native-fbank/edge-tts）；FunASR 模型首次使用自动下载（约 1GB，modelscope），或先跑 `python scripts/download_funasr_model.py` 预热；edge-tts 需联网（失败自动降级为纯文字）
+- 浏览器：建议 Chrome/Edge；首次按住说话时授权麦克风
+- 形象版权：Hiyori 为 Live2D 官方样例模型（Live2D Free Material License，可商用演示，保留本声明）
+
