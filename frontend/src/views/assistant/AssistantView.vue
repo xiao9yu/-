@@ -1,108 +1,15 @@
 <!-- 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能助教任务(18) -->
 <template>
-  <div class="assistant-page">
-    <el-card class="assistant-card">
-      <template #header>
-        <div class="card-head">
-          <span><el-icon class="head-icon"><ChatDotRound /></el-icon>数字人助教</span>
-          <div class="head-side">
-            <el-tag size="small" effect="plain" type="success">知识库 RAG</el-tag>
-            <el-tag size="small" effect="plain">{{ docs.length }} 份文档</el-tag>
-            <span class="voice-state">{{ voiceStateText }}</span>
-            <el-button size="small" @click="kbDrawer = true">
-              <el-icon class="btn-ico"><Collection /></el-icon>知识库管理
-            </el-button>
-            <el-switch v-model="muted" size="small" inline-prompt active-text="静音" inactive-text="朗读" @change="onMute" />
-          </div>
-        </div>
-      </template>
-
-      <div class="assistant-body">
-        <!-- 数字人即回答者：整块面板只出现数字人形象 -->
-        <div class="avatar-stage">
-          <Live2DAvatar ref="avatarRef" />
-          <div class="avatar-hint">打字提问或按住说话，数字人语音回答</div>
-        </div>
-
-        <!-- 字幕区：仅展示当前一轮问答；引用以标签形式展示，点开弹窗看原文 -->
-        <div class="subtitle-panel">
-          <template v-if="currentQ">
-            <div class="sub-question">
-              <span class="sub-who">{{ auth.user?.real_name || auth.user?.username }} 问</span>
-              <span class="sub-q-text">{{ currentQ }}</span>
-            </div>
-            <div class="sub-answer">
-              <span class="sub-who answer">数字人助教</span>
-              <span v-if="currentA?.text" class="sub-a-text">{{ currentA.text }}</span>
-              <span v-else class="typing"><i /><i /><i /></span>
-            </div>
-            <div v-if="currentA?.citations?.length" class="sub-cites">
-              <el-button v-for="c in currentA.citations" :key="c.ref_no" size="small" text
-                class="cite-chip" @click="citeDialog = true">
-                [{{ c.ref_no }}] {{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}
-              </el-button>
-            </div>
-          </template>
-          <template v-else>
-            <div class="sub-welcome">
-              <span class="welcome-title">你好，我是数字人助教</span>
-              <span class="welcome-sub">基于知识库回答你的问题，回答将语音朗读并引用原文。试着问：</span>
-              <span class="suggest-chips">
-                <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
-              </span>
-            </div>
-          </template>
-        </div>
-
-        <!-- 控制区 -->
-        <div class="control-row">
-          <el-input v-model="question" placeholder="基于知识库提问，如：梯度下降的学习率怎么选？"
-            @keyup.enter="onAsk" :disabled="answering || voiceBusy" size="large" class="chat-input-box" />
-          <el-button type="primary" size="large" :loading="answering" :disabled="voiceBusy" @click="onAsk" class="send-btn">
-            <el-icon class="btn-ico"><Promotion /></el-icon>发送
-          </el-button>
-          <el-button class="talk-btn" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
-            :disabled="!voiceReady || answering" @pointerdown="startTalk" @pointerup="stopTalk"
-            @pointerleave="stopTalk" @pointercancel="stopTalk">
-            <el-icon class="btn-ico"><Microphone /></el-icon>{{ talking ? '松开结束' : '按住说话' }}
-          </el-button>
-          <el-button v-if="voiceState === 'playing' || voiceState === 'transcribing' || voiceState === 'thinking'"
-            class="stop-btn" type="danger" plain size="large" @click="interrupt">
-            <el-icon class="btn-ico"><VideoPause /></el-icon>打断
-          </el-button>
-        </div>
-        <div class="voice-row">
-          <span class="mic-hint">需允许麦克风权限；语音识别本地完成，录音不出本机</span>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 引用原文弹窗 -->
-    <el-dialog v-model="citeDialog" title="引用原文" width="640px">
-      <el-card v-for="c in currentA?.citations || []" :key="c.ref_no" shadow="never" class="cite-card">
+  <el-row :gutter="16" class="assistant-row">
+    <!-- 知识库 -->
+    <el-col :span="6">
+      <el-card class="kb-card">
         <template #header>
-          <div class="cite-head">
-            <span class="cite-ref">[{{ c.ref_no }}]</span>
-            <el-icon class="cite-ico" :size="14"><component :is="iconOf(c.source)" /></el-icon>
-            <span class="cite-src">{{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
-            <el-tag size="small" effect="plain">{{ c.kind }}</el-tag>
+          <div class="card-head">
+            <span><el-icon class="head-icon"><Collection /></el-icon>知识库管理</span>
+            <el-tag size="small" effect="plain">{{ docs.length }} 份文档</el-tag>
           </div>
         </template>
-        <el-image v-if="c.kind === 'image'" :src="images[c.chunk_id] || ''" fit="contain"
-          class="cite-img" :preview-src-list="[images[c.chunk_id] || '']" />
-        <el-skeleton v-if="c.kind === 'image' && images[c.chunk_id] === undefined" :rows="2" animated />
-        <pre v-if="c.kind === 'table'" class="cite-table">{{ c.text }}</pre>
-        <el-collapse class="cite-collapse">
-          <el-collapse-item title="查看原文摘录">
-            <div class="cite-excerpt">{{ c.text }}</div>
-          </el-collapse-item>
-        </el-collapse>
-      </el-card>
-    </el-dialog>
-
-    <!-- 知识库管理抽屉 -->
-    <el-drawer v-model="kbDrawer" title="知识库管理" size="440px">
-      <div class="kb-drawer-body">
         <el-tabs v-model="scope" @tab-change="loadDocs" class="kb-tabs">
           <el-tab-pane label="我的私有库" name="private" />
           <el-tab-pane v-if="isAdmin" label="公共库（管理员）" name="public" />
@@ -138,9 +45,107 @@
           </div>
           <el-empty v-if="!docs.length" description="暂无文档，上传教材即可提问" :image-size="80" />
         </div>
-      </div>
-    </el-drawer>
-  </div>
+      </el-card>
+    </el-col>
+
+    <!-- 数字人智能问答：整块面板只出现数字人（无聊天消息面板） -->
+    <el-col :span="18">
+      <el-card class="assistant-card">
+        <template #header>
+          <div class="card-head">
+            <span><el-icon class="head-icon"><ChatDotRound /></el-icon>数字人助教</span>
+            <div class="head-side">
+              <el-tag size="small" effect="plain" type="success">知识库 RAG</el-tag>
+              <span class="voice-state">{{ voiceStateText }}</span>
+              <el-switch v-model="muted" size="small" inline-prompt active-text="静音" inactive-text="朗读" @change="onMute" />
+            </div>
+          </div>
+        </template>
+
+        <div class="assistant-body">
+          <!-- 数字人即回答者 -->
+          <div class="avatar-stage">
+            <Live2DAvatar ref="avatarRef" />
+            <div class="avatar-hint">打字提问或按住说话，数字人语音回答</div>
+          </div>
+
+          <!-- 字幕区：仅展示当前一轮问答；引用以标签形式展示，点开弹窗看原文 -->
+          <div class="subtitle-panel">
+            <template v-if="currentQ">
+              <div class="sub-question">
+                <span class="sub-who">{{ auth.user?.real_name || auth.user?.username }} 问</span>
+                <span class="sub-q-text">{{ currentQ }}</span>
+              </div>
+              <div class="sub-answer">
+                <span class="sub-who answer">数字人助教</span>
+                <span v-if="currentA?.text" class="sub-a-text">{{ currentA.text }}</span>
+                <span v-else class="typing"><i /><i /><i /></span>
+              </div>
+              <div v-if="currentA?.citations?.length" class="sub-cites">
+                <el-button v-for="c in currentA.citations" :key="c.ref_no" size="small" text
+                  class="cite-chip" @click="citeDialog = true">
+                  [{{ c.ref_no }}] {{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}
+                </el-button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="sub-welcome">
+                <span class="welcome-title">你好，我是数字人助教</span>
+                <span class="welcome-sub">基于知识库回答你的问题，回答将语音朗读并引用原文。试着问：</span>
+                <span class="suggest-chips">
+                  <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
+                </span>
+              </div>
+            </template>
+          </div>
+
+          <!-- 控制区 -->
+          <div class="control-row">
+            <el-input v-model="question" placeholder="基于知识库提问，如：梯度下降的学习率怎么选？"
+              @keyup.enter="onAsk" :disabled="answering || voiceBusy" size="large" class="chat-input-box" />
+            <el-button type="primary" size="large" :loading="answering" :disabled="voiceBusy" @click="onAsk" class="send-btn">
+              <el-icon class="btn-ico"><Promotion /></el-icon>发送
+            </el-button>
+            <el-button class="talk-btn" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
+              :disabled="!voiceReady || answering" @pointerdown="startTalk" @pointerup="stopTalk"
+              @pointerleave="stopTalk" @pointercancel="stopTalk">
+              <el-icon class="btn-ico"><Microphone /></el-icon>{{ talking ? '松开结束' : '按住说话' }}
+            </el-button>
+            <el-button v-if="voiceState === 'playing' || voiceState === 'transcribing' || voiceState === 'thinking'"
+              class="stop-btn" type="danger" plain size="large" @click="interrupt">
+              <el-icon class="btn-ico"><VideoPause /></el-icon>打断
+            </el-button>
+          </div>
+          <div class="voice-row">
+            <span class="mic-hint">需允许麦克风权限；语音识别本地完成，录音不出本机</span>
+          </div>
+        </div>
+      </el-card>
+    </el-col>
+  </el-row>
+
+  <!-- 引用原文弹窗 -->
+  <el-dialog v-model="citeDialog" title="引用原文" width="640px">
+    <el-card v-for="c in currentA?.citations || []" :key="c.ref_no" shadow="never" class="cite-card">
+      <template #header>
+        <div class="cite-head">
+          <span class="cite-ref">[{{ c.ref_no }}]</span>
+          <el-icon class="cite-ico" :size="14"><component :is="iconOf(c.source)" /></el-icon>
+          <span class="cite-src">{{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
+          <el-tag size="small" effect="plain">{{ c.kind }}</el-tag>
+        </div>
+      </template>
+      <el-image v-if="c.kind === 'image'" :src="images[c.chunk_id] || ''" fit="contain"
+        class="cite-img" :preview-src-list="[images[c.chunk_id] || '']" />
+      <el-skeleton v-if="c.kind === 'image' && images[c.chunk_id] === undefined" :rows="2" animated />
+      <pre v-if="c.kind === 'table'" class="cite-table">{{ c.text }}</pre>
+      <el-collapse class="cite-collapse">
+        <el-collapse-item title="查看原文摘录">
+          <div class="cite-excerpt">{{ c.text }}</div>
+        </el-collapse-item>
+      </el-collapse>
+    </el-card>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -172,7 +177,6 @@ const answering = ref(false)
 const currentQ = ref('')                    // 当前一轮的用户提问
 const currentA = ref<Answer | null>(null)   // 当前一轮的助教回答
 const citeDialog = ref(false)
-const kbDrawer = ref(false)
 const images = ref<Record<string, string>>({})   // chunk_id → objectURL（接口需 Bearer，img 标签无法带头，故 fetch blob）
 
 // ---------- 数字人 ----------
@@ -389,7 +393,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.assistant-page { height: calc(100vh - 172px); }
+.assistant-row { height: calc(100vh - 172px); }
 
 .card-head { display: flex; align-items: center; justify-content: space-between; }
 .head-icon { margin-right: 7px; color: var(--accent); vertical-align: -2px; }
@@ -397,6 +401,42 @@ onBeforeUnmount(() => {
 .head-side { display: flex; align-items: center; gap: 10px; }
 .voice-state { font-size: 12.5px; color: var(--text-3); }
 
+/* ---------- 知识库 ---------- */
+.kb-card { height: 100%; display: flex; flex-direction: column; }
+.kb-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.kb-tabs :deep(.el-tabs__header) { margin-bottom: 4px; }
+.kb-upload :deep(.el-upload) { width: 100%; }
+.kb-upload-btn { width: 100%; }
+.kb-alert { margin-top: 10px; }
+.kb-alert :deep(.el-alert__title) { font-size: 12px; }
+
+.kb-list { margin-top: 12px; overflow-y: auto; flex: 1; padding-right: 2px; }
+.kb-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  transition: all 0.15s ease;
+  background: var(--surface);
+}
+.kb-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.kb-item-icon {
+  width: 34px; height: 34px; flex: none;
+  border-radius: 9px;
+  background: var(--tint);
+  color: var(--tint-ink);
+  display: flex; align-items: center; justify-content: center;
+}
+.kb-item-main { flex: 1; min-width: 0; }
+.kb-item-title {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kb-item-tags { margin-top: 5px; display: flex; gap: 4px; }
+.kb-item-del { flex: none; }
+
+/* ---------- 数字人 ---------- */
 .assistant-card { height: 100%; display: flex; flex-direction: column; }
 .assistant-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .assistant-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -495,38 +535,4 @@ onBeforeUnmount(() => {
 .cite-collapse :deep(.el-collapse-item__header) { font-size: 12px; color: var(--text-3); height: 32px; border: none; }
 .cite-collapse :deep(.el-collapse-item__wrap) { border: none; }
 .cite-excerpt { font-size: 12px; color: var(--text-2); line-height: 1.7; white-space: pre-wrap; }
-
-/* 知识库抽屉 */
-.kb-drawer-body { display: flex; flex-direction: column; height: 100%; }
-.kb-tabs :deep(.el-tabs__header) { margin-bottom: 4px; }
-.kb-upload :deep(.el-upload) { width: 100%; }
-.kb-upload-btn { width: 100%; }
-.kb-alert { margin-top: 10px; }
-.kb-alert :deep(.el-alert__title) { font-size: 12px; }
-
-.kb-list { margin-top: 12px; overflow-y: auto; flex: 1; padding-right: 2px; }
-.kb-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 8px;
-  transition: all 0.15s ease;
-  background: var(--surface);
-}
-.kb-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
-.kb-item-icon {
-  width: 34px; height: 34px; flex: none;
-  border-radius: 9px;
-  background: var(--tint);
-  color: var(--tint-ink);
-  display: flex; align-items: center; justify-content: center;
-}
-.kb-item-main { flex: 1; min-width: 0; }
-.kb-item-title {
-  font-size: 13px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.kb-item-tags { margin-top: 5px; display: flex; gap: 4px; }
-.kb-item-del { flex: none; }
 </style>
