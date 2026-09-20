@@ -2,7 +2,7 @@
 <template>
   <el-row :gutter="16" class="assistant-row">
     <!-- 知识库 -->
-    <el-col :span="7">
+    <el-col :span="6">
       <el-card class="kb-card">
         <template #header>
           <div class="card-head">
@@ -48,96 +48,93 @@
       </el-card>
     </el-col>
 
-    <!-- 对话区 -->
-    <el-col :span="10">
+    <!-- 数字人智能问答：形象即回答者，文字流式 + 语音朗读 + 口型同步 -->
+    <el-col :span="18">
       <el-card class="chat-card">
         <template #header>
           <div class="card-head">
-            <span><el-icon class="head-icon"><ChatDotRound /></el-icon>智能助教问答（引用溯源）</span>
-            <el-tag size="small" effect="plain" type="success">知识库 RAG</el-tag>
-          </div>
-        </template>
-        <div ref="chatBox" class="chat-box">
-          <div v-for="(m, i) in messages" :key="i" class="chat-row" :class="m.role">
-            <el-avatar :size="34" class="chat-avatar" :class="m.role">
-              <el-icon v-if="m.role === 'assistant'" :size="18"><MagicStick /></el-icon>
-              <span v-else>{{ avatarText }}</span>
-            </el-avatar>
-            <div class="chat-content">
-              <div class="chat-meta" :class="m.role">
-                <span class="chat-name">{{ m.role === 'assistant' ? '智能助教' : auth.user?.real_name || auth.user?.username }}</span>
-                <span class="chat-time">{{ timeOf(i) }}</span>
-              </div>
-              <div class="chat-bubble" :class="m.role">
-                <span v-if="m.text">{{ m.text }}</span>
-                <span v-else class="typing"><i /><i /><i /></span>
-              </div>
-              <div v-if="m.citations?.length" class="cite-list">
-                <el-card v-for="c in m.citations" :key="c.ref_no" shadow="never" class="cite-card">
-                  <template #header>
-                    <div class="cite-head">
-                      <span class="cite-ref">[{{ c.ref_no }}]</span>
-                      <el-icon class="cite-ico" :size="14"><component :is="iconOf(c.source)" /></el-icon>
-                      <span class="cite-src">{{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
-                      <el-tag size="small" effect="plain">{{ c.kind }}</el-tag>
-                    </div>
-                  </template>
-                  <el-image v-if="c.kind === 'image'" :src="images[c.chunk_id] || ''" fit="contain"
-                    class="cite-img" :preview-src-list="[images[c.chunk_id] || '']" />
-                  <el-skeleton v-if="c.kind === 'image' && images[c.chunk_id] === undefined" :rows="2" animated />
-                  <pre v-if="c.kind === 'table'" class="cite-table">{{ c.text }}</pre>
-                  <el-collapse class="cite-collapse">
-                    <el-collapse-item title="查看原文摘录">
-                      <div class="cite-excerpt">{{ c.text }}</div>
-                    </el-collapse-item>
-                  </el-collapse>
-                </el-card>
-              </div>
+            <span><el-icon class="head-icon"><ChatDotRound /></el-icon>数字人智能问答（引用溯源）</span>
+            <div class="head-side">
+              <el-tag size="small" effect="plain" type="success">知识库 RAG</el-tag>
+              <span class="voice-state">{{ voiceStateText }}</span>
+              <el-switch v-model="muted" size="small" inline-prompt active-text="静音" inactive-text="朗读" @change="onMute" />
             </div>
           </div>
-          <div v-if="!messages.length" class="chat-welcome">
-            <div class="welcome-mark"><el-icon :size="26"><MagicStick /></el-icon></div>
-            <div class="welcome-title">你好，我是智能助教</div>
-            <div class="welcome-sub">基于知识库回答你的问题，答案将逐句引用原文。试着问：</div>
-            <div class="welcome-suggests">
-              <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
+        </template>
+        <div class="chat-body">
+          <div class="avatar-stage">
+            <Live2DAvatar ref="avatarRef" />
+            <div class="avatar-hint">打字提问或按住说话，数字人语音回答</div>
+          </div>
+          <div class="chat-column">
+            <div ref="chatBox" class="chat-box">
+              <div v-for="(m, i) in messages" :key="i" class="chat-row" :class="m.role">
+                <el-avatar :size="34" class="chat-avatar" :class="m.role">
+                  <el-icon v-if="m.role === 'assistant'" :size="18"><MagicStick /></el-icon>
+                  <span v-else>{{ avatarText }}</span>
+                </el-avatar>
+                <div class="chat-content">
+                  <div class="chat-meta" :class="m.role">
+                    <span class="chat-name">{{ m.role === 'assistant' ? '数字人助教' : auth.user?.real_name || auth.user?.username }}</span>
+                    <span class="chat-time">{{ timeOf(i) }}</span>
+                  </div>
+                  <div class="chat-bubble" :class="m.role">
+                    <span v-if="m.text">{{ m.text }}</span>
+                    <span v-else class="typing"><i /><i /><i /></span>
+                  </div>
+                  <div v-if="m.citations?.length" class="cite-list">
+                    <el-card v-for="c in m.citations" :key="c.ref_no" shadow="never" class="cite-card">
+                      <template #header>
+                        <div class="cite-head">
+                          <span class="cite-ref">[{{ c.ref_no }}]</span>
+                          <el-icon class="cite-ico" :size="14"><component :is="iconOf(c.source)" /></el-icon>
+                          <span class="cite-src">{{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
+                          <el-tag size="small" effect="plain">{{ c.kind }}</el-tag>
+                        </div>
+                      </template>
+                      <el-image v-if="c.kind === 'image'" :src="images[c.chunk_id] || ''" fit="contain"
+                        class="cite-img" :preview-src-list="[images[c.chunk_id] || '']" />
+                      <el-skeleton v-if="c.kind === 'image' && images[c.chunk_id] === undefined" :rows="2" animated />
+                      <pre v-if="c.kind === 'table'" class="cite-table">{{ c.text }}</pre>
+                      <el-collapse class="cite-collapse">
+                        <el-collapse-item title="查看原文摘录">
+                          <div class="cite-excerpt">{{ c.text }}</div>
+                        </el-collapse-item>
+                      </el-collapse>
+                    </el-card>
+                  </div>
+                </div>
+              </div>
+              <div v-if="!messages.length" class="chat-welcome">
+                <div class="welcome-mark"><el-icon :size="26"><MagicStick /></el-icon></div>
+                <div class="welcome-title">你好，我是数字人助教</div>
+                <div class="welcome-sub">基于知识库回答你的问题，回答将语音朗读并逐句引用原文。试着问：</div>
+                <div class="welcome-suggests">
+                  <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="chat-input">
+              <el-input v-model="question" placeholder="基于知识库提问，如：梯度下降的学习率怎么选？"
+                @keyup.enter="onAsk" :disabled="answering || voiceBusy" size="large" class="chat-input-box" />
+              <el-button type="primary" size="large" :loading="answering" :disabled="voiceBusy" @click="onAsk" class="send-btn">
+                <el-icon class="btn-ico"><Promotion /></el-icon>发送
+              </el-button>
+              <el-button class="talk-btn" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
+                :disabled="!voiceReady || answering" @pointerdown="startTalk" @pointerup="stopTalk"
+                @pointerleave="stopTalk" @pointercancel="stopTalk">
+                <el-icon class="btn-ico"><Microphone /></el-icon>{{ talking ? '松开结束' : '按住说话' }}
+              </el-button>
+            </div>
+            <div class="voice-row">
+              <el-button v-if="voiceState === 'playing' || voiceState === 'transcribing' || voiceState === 'thinking'"
+                class="stop-btn" type="danger" plain size="small" @click="interrupt">
+                <el-icon class="btn-ico"><VideoPause /></el-icon>打断
+              </el-button>
+              <span class="mic-hint">需允许麦克风权限；语音识别本地完成，录音不出本机</span>
             </div>
           </div>
         </div>
-        <div class="chat-input">
-          <el-input v-model="question" placeholder="基于知识库提问，如：梯度下降的学习率怎么选？"
-            @keyup.enter="onAsk" :disabled="answering || voiceBusy" size="large" class="chat-input-box" />
-          <el-button type="primary" size="large" :loading="answering" :disabled="voiceBusy" @click="onAsk" class="send-btn">
-            <el-icon class="btn-ico"><Promotion /></el-icon>发送
-          </el-button>
-        </div>
-      </el-card>
-    </el-col>
-
-    <!-- 数字人互动 -->
-    <el-col :span="7">
-      <el-card class="avatar-card">
-        <template #header>
-          <div class="card-head">
-            <span><el-icon class="head-icon"><Microphone /></el-icon>数字人互动</span>
-            <el-switch v-model="muted" size="small" inline-prompt active-text="静音" inactive-text="朗读" @change="onMute" />
-          </div>
-        </template>
-        <div class="avatar-stage">
-          <Live2DAvatar ref="avatarRef" />
-        </div>
-        <div class="avatar-state">{{ voiceStateText }}</div>
-        <el-button class="talk-btn" type="primary" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
-          :disabled="!voiceReady || answering" @pointerdown="startTalk" @pointerup="stopTalk"
-          @pointerleave="stopTalk" @pointercancel="stopTalk">
-          <el-icon class="btn-ico"><Microphone /></el-icon>{{ talking ? '松开结束' : '按住说话' }}
-        </el-button>
-        <el-button v-if="voiceState === 'playing' || voiceState === 'transcribing' || voiceState === 'thinking'"
-          class="stop-btn" type="danger" plain @click="interrupt">
-          <el-icon class="btn-ico"><VideoPause /></el-icon>打断
-        </el-button>
-        <el-alert type="info" :closable="false" class="avatar-alert"
-          title="需允许麦克风权限；语音识别本地完成，录音不出本机" />
       </el-card>
     </el-col>
   </el-row>
@@ -406,6 +403,8 @@ onBeforeUnmount(() => {
 .card-head { display: flex; align-items: center; justify-content: space-between; }
 .head-icon { margin-right: 7px; color: var(--accent); vertical-align: -2px; }
 .btn-ico { margin-right: 5px; }
+.head-side { display: flex; align-items: center; gap: 10px; }
+.voice-state { font-size: 12.5px; color: var(--text-3); }
 
 /* ---------- 知识库 ---------- */
 .kb-card { height: 100%; display: flex; flex-direction: column; }
@@ -442,9 +441,27 @@ onBeforeUnmount(() => {
 .kb-item-tags { margin-top: 5px; display: flex; gap: 4px; }
 .kb-item-del { flex: none; }
 
-/* ---------- 对话 ---------- */
+/* ---------- 数字人智能问答 ---------- */
 .chat-card { height: 100%; display: flex; flex-direction: column; }
 .chat-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.chat-body { flex: 1; min-height: 0; display: flex; gap: 14px; }
+
+/* 数字人形象区：常驻展示，播报时口型同步 */
+.avatar-stage {
+  flex: 0 0 300px;
+  position: relative;
+  background: radial-gradient(ellipse at 50% 38%, #eef0fb 0%, #f7f8fc 58%, #f2f3f9 100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.avatar-hint {
+  position: absolute; left: 0; right: 0; bottom: 8px;
+  text-align: center; font-size: 12px; color: var(--text-3);
+  pointer-events: none;
+}
+
+.chat-column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat-box { flex: 1; overflow-y: auto; padding: 6px 8px 4px; }
 
 .chat-row { display: flex; gap: 10px; margin-bottom: 22px; }
@@ -547,18 +564,8 @@ onBeforeUnmount(() => {
 .chat-input { display: flex; gap: 10px; margin-top: 14px; }
 .chat-input-box :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px var(--border) inset; }
 .send-btn { letter-spacing: 2px; min-width: 96px; }
-
-/* ---------- 数字人 ---------- */
-.avatar-card { height: 100%; display: flex; flex-direction: column; }
-.avatar-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.avatar-stage {
-  flex: 1; min-height: 320px;
-  background: radial-gradient(ellipse at 50% 38%, #eef0fb 0%, #f7f8fc 58%, #f2f3f9 100%);
-  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-}
-.avatar-state { margin-top: 10px; text-align: center; font-size: 12.5px; color: var(--text-3); }
-.talk-btn { width: 100%; margin-top: 10px; }
-.stop-btn { width: 100%; margin-top: 8px; }
-.avatar-alert { margin-top: 10px; }
-.avatar-alert :deep(.el-alert__title) { font-size: 12px; }
+.talk-btn { min-width: 132px; }
+.voice-row { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+.stop-btn { flex: none; }
+.mic-hint { font-size: 12px; color: var(--text-3); }
 </style>
