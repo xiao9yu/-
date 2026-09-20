@@ -46,6 +46,15 @@ def test_build_answer_prompt_numbers_context():
     assert "什么是梯度下降" in messages[1]["content"]
 
 
+def test_grounded_prompt_forbids_fabrication_and_requires_citations():
+    """有命中路径：答案必须来自检索资料（不得编造），采用处必须带引用编号。"""
+    hits = [type("H", (), {"chunk": _col().chunks[0], "score": 0.9})()]
+    system = build_answer_prompt("什么是梯度下降", hits)[0]["content"]
+    assert "仅依据【检索资料】" in system
+    assert "不得编造" in system
+    assert "必须标注引用编号" in system
+
+
 def test_build_answer_prompt_without_hits_uses_general_knowledge_prompt():
     """无命中时：不拼检索资料、不要求引用编号，改用通用知识提示词直接回答。"""
     messages = build_answer_prompt("如何做红烧肉", [])
