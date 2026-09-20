@@ -43,9 +43,32 @@ def split_sentences(text: str) -> list[str]:
 
 
 def _communicate(text: str, voice: str) -> bytes:
-    """单次合成（测试 monkeypatch 的 seam；真实 edge_tts 仅在此懒导入）。"""
+    """单次合成（测试 monkeypatch 的 seam；真实 edge_tts 仅在此懒导入）。
+
+    edge-tts 7.x 的 save_sync(audio_fname) 必传文件名且写盘、不返回字节（旧版
+    无参调用返回字节，本项目曾按旧版 API 调用 → 运行时 TypeError 被吞成 502）；
+    改用 stream() 流式收集 audio 分片，6.x/7.x 版本行为一致。
+    """
+    import asyncio
     import edge_tts
-    return edge_tts.Communicate(text, voice).save_sync()
+
+    async def _collect() -> bytes:
+        com = edge_tts.Communicate(text, voice)
+        buf = bytearray()
+        async for chunk in com.stream():
+            if chunk["type"] == "audio":
+                buf.extend(chunk["data"])
+        if not buf:
+            raise ValueError("edge-tts 返回空音频")
+        return bytes(buf)
+
+    try:
+        return asyncio.run(_collect())
+    except RuntimeError:
+        # 在运行中的事件循环上被调用时，asyncio.run 会抛 RuntimeError：借线程另起 loop
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _collect()).result()
 
 
 def _key(text: str, voice: str) -> str:

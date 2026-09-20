@@ -49,7 +49,7 @@
     </el-col>
 
     <!-- 对话区 -->
-    <el-col :span="12">
+    <el-col :span="10">
       <el-card class="chat-card">
         <template #header>
           <div class="card-head">
@@ -115,7 +115,7 @@
     </el-col>
 
     <!-- 数字人互动 -->
-    <el-col :span="5">
+    <el-col :span="7">
       <el-card class="avatar-card">
         <template #header>
           <div class="card-head">
@@ -551,7 +551,11 @@ onBeforeUnmount(() => {
 /* ---------- 数字人 ---------- */
 .avatar-card { height: 100%; display: flex; flex-direction: column; }
 .avatar-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.avatar-stage { flex: 1; min-height: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.avatar-stage {
+  flex: 1; min-height: 320px;
+  background: radial-gradient(ellipse at 50% 38%, #eef0fb 0%, #f7f8fc 58%, #f2f3f9 100%);
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
 .avatar-state { margin-top: 10px; text-align: center; font-size: 12.5px; color: var(--text-3); }
 .talk-btn { width: 100%; margin-top: 10px; }
 .stop-btn { width: 100%; margin-top: 8px; }
