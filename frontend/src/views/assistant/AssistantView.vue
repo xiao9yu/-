@@ -53,7 +53,7 @@
       <el-card class="assistant-card">
         <template #header>
           <div class="card-head">
-            <span><el-icon class="head-icon"><ChatDotRound /></el-icon>数字人助教</span>
+            <span><el-icon class="head-icon"><ChatDotRound /></el-icon>朵娅 · 数字人助教</span>
             <div class="head-side">
               <el-tag size="small" effect="plain" type="success">知识库 RAG</el-tag>
               <span class="voice-state">{{ voiceStateText }}</span>
@@ -63,40 +63,35 @@
         </template>
 
         <div class="assistant-body">
-          <!-- 数字人即回答者 -->
+          <!-- 整块面板只有数字人：回答由朵娅说出口，文字以气泡从她身上发出（无下方文字窗口） -->
           <div class="avatar-stage">
             <Live2DAvatar ref="avatarRef" />
-            <div class="avatar-hint">打字提问或按住说话，数字人语音回答</div>
-          </div>
 
-          <!-- 字幕区：仅展示当前一轮问答；引用以标签形式展示，点开弹窗看原文 -->
-          <div class="subtitle-panel">
-            <template v-if="currentQ">
-              <div class="sub-question">
-                <span class="sub-who">{{ auth.user?.real_name || auth.user?.username }} 问</span>
-                <span class="sub-q-text">{{ currentQ }}</span>
-              </div>
-              <div class="sub-answer">
-                <span class="sub-who answer">数字人助教</span>
-                <span v-if="currentA?.text" class="sub-a-text">{{ currentA.text }}</span>
+            <!-- 当前一轮问答气泡（从数字人发出） -->
+            <div v-if="currentQ" class="talk-bubble">
+              <div class="bubble-q">{{ currentQ }}</div>
+              <div class="bubble-a">
+                <span v-if="currentA?.text">{{ currentA.text }}</span>
                 <span v-else class="typing"><i /><i /><i /></span>
               </div>
-              <div v-if="currentA?.citations?.length" class="sub-cites">
+              <div v-if="currentA?.citations?.length" class="bubble-cites">
                 <el-button v-for="c in currentA.citations" :key="c.ref_no" size="small" text
                   class="cite-chip" @click="citeDialog = true">
                   [{{ c.ref_no }}] {{ c.source }}{{ c.page ? ` · 第${c.page}页` : '' }}
                 </el-button>
               </div>
-            </template>
-            <template v-else>
-              <div class="sub-welcome">
-                <span class="welcome-title">你好，我是数字人助教</span>
-                <span class="welcome-sub">基于知识库回答你的问题，回答将语音朗读并引用原文。试着问：</span>
-                <span class="suggest-chips">
-                  <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
-                </span>
-              </div>
-            </template>
+            </div>
+
+            <!-- 欢迎引导（覆盖在舞台上） -->
+            <div v-else class="stage-welcome">
+              <span class="welcome-title">你好，我是朵娅</span>
+              <span class="welcome-sub">基于知识库回答你的问题，我会把答案读给你听并引用原文。试着问：</span>
+              <span class="suggest-chips">
+                <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
+              </span>
+            </div>
+
+            <div v-if="!currentQ" class="avatar-hint">打字提问或按住说话，朵娅语音回答</div>
           </div>
 
           <!-- 控制区 -->
@@ -481,33 +476,44 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* 字幕区：当前一轮问答 */
-.subtitle-panel {
-  margin-top: 12px;
-  max-height: 150px;
-  overflow-y: auto;
+/* 问答气泡：覆盖在舞台下半部（人物脸部在舞台上半部，不被遮挡），尾巴朝上指向人物 */
+.talk-bubble {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  width: min(62%, 540px);
+  max-height: 42%;
+  display: flex; flex-direction: column; gap: 7px;
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  padding: 10px 14px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  overflow-y: auto;
+  z-index: 2;
 }
-.sub-question { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
-.sub-who {
-  flex: none; font-size: 12px; font-weight: 600; color: var(--text-2);
-  padding: 1px 8px; border-radius: 4px; background: #eef0fb;
+.talk-bubble::before {  /* 气泡尾巴：顶端朝上，指向上方人物 */
+  content: ''; position: absolute; left: 50%; top: -9px; transform: translateX(-50%);
+  border: 9px solid transparent; border-bottom-color: #fff;
 }
-.sub-who.answer { background: #e6e6fa; color: #4a4ac8; }
-.sub-q-text { font-size: 13.5px; color: var(--text-1); word-break: break-word; }
-.sub-answer { display: flex; gap: 8px; align-items: flex-start; }
-.sub-a-text {
-  flex: 1; font-size: 13.5px; line-height: 1.7; color: var(--text-1);
+.bubble-q { font-size: 12px; color: var(--text-3); word-break: break-word; }
+.bubble-a {
+  font-size: 13.5px; line-height: 1.7; color: var(--text-1);
   white-space: pre-wrap; word-break: break-word;
 }
-.sub-cites { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 2px 6px; }
+.bubble-cites { display: flex; flex-wrap: wrap; gap: 2px 6px; }
 .cite-chip { font-size: 12px; color: var(--accent); padding: 0 6px; height: 24px; }
 
-/* 欢迎引导 */
-.sub-welcome { display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 6px 0 2px; }
+/* 欢迎引导（覆盖在舞台下部，避免挡住人物脸部） */
+.stage-welcome {
+  position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%);
+  width: min(76%, 640px);
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 18px;
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
 .welcome-title { font-size: 15px; font-weight: 700; }
 .welcome-sub { font-size: 12.5px; color: var(--text-3); }
 .suggest-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 2px; }

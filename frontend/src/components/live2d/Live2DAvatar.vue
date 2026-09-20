@@ -22,10 +22,23 @@ let model: Live2DModel | null = null
 let mouthParam = ''
 let breathParam = ''
 let lastMouth = 0
-let rafId = 0
 let ro: ResizeObserver | null = null
+let gestureTimer: number | undefined
 let baseW = 0   // 模型原始尺寸（scale=1 时捕获，适配计算不受后续缩放影响）
 let baseH = 0
+
+// 随机小动作（头部张望/身体轻摆）：说话与待机都定时触发，让"表情"不只有眨眼和待机循环。
+// 组名按模型设置归一化（首字母小写）；priority=1 打断当前待机，结束后自动恢复待机。
+const GESTURE_GROUPS = ['flick', 'flickDown', 'flick@Body']
+function scheduleGesture() {
+  gestureTimer = window.setTimeout(() => {
+    if (model) {
+      const g = GESTURE_GROUPS[Math.floor(Math.random() * GESTURE_GROUPS.length)]
+      try { model.motion(g, undefined, 1) } catch { /* 组不存在时忽略 */ }
+    }
+    scheduleGesture()
+  }, 8000 + Math.random() * 6000)
+}
 
 // 取景参数：只取模型顶部 45%（头+肩）充满舞台——整体等比缩放会让人物只有舞台
 // 1/3 宽（口型十几像素、看不清），顶部取景后头部约占舞台 7 成、口型清晰可辨；
@@ -52,7 +65,8 @@ function fitModel() {
 onMounted(async () => {
   await nextTick()  // 等 flex 布局结算后再量尺寸
   const { w, h } = hostSize()
-  app = new PIXI.Application({ width: w, height: h, backgroundAlpha: 0, autoDensity: true })
+  app = new PIXI.Application({ width: w, height: h, backgroundAlpha: 0, autoDensity: true,
+    preserveDrawingBuffer: true })  // 保留帧缓冲：口型渲染验证（readPixels）与调试截帧需要
   const view = app.view as HTMLCanvasElement
   view.style.width = '100%'
   view.style.height = '100%'
@@ -72,7 +86,12 @@ onMounted(async () => {
     breathParam = findParam(model, /Breath/i, 'ParamBreath')
     try { model.motion('idle') } catch { /* 无 idle motion 时走手动呼吸 */ }
     fitModel()
-    rafId = requestAnimationFrame(tick)
+    // 口型写入必须挂在 afterMotionUpdate：待机/手势 motion 每帧经 motionManager.update
+    // 覆写口型参数后再构建绘制数据，RAF 里写参数（晚于绘制数据构建）永远进不了画面；
+    // 该事件在 motionManager.update 之后、saveParameters/模型 update 之前触发，
+    // 写入的值即为本帧绘制所用 → 音量驱动的口型真正对上画面。
+    ;(model as any).internalModel?.on?.('afterMotionUpdate', onAfterMotion)
+    scheduleGesture()
   } catch (e) {
     console.error('Live2D 加载失败', e)
   }
@@ -101,29 +120,27 @@ function setParam(core: any, id: string, v: number) {
   }
 }
 
-/** 口型平滑状态：快开慢合低通，跟上语音节奏且无逐帧抖动。 */
-let mouthSmooth = 0
-
-function tick() {
-  if (model && mouthParam) {
-    const core = (model as any).internalModel?.coreModel
-    // 音量目标逐帧轻微衰减：回调停更（打断/静音/播放结束）后口型自动闭合，不留张嘴残影；
-    // 播放中 onVolume 每帧赋值覆盖衰减，衰减不生效。
-    lastMouth *= 0.95
-    const k = lastMouth > mouthSmooth ? 0.55 : 0.16
-    mouthSmooth += (lastMouth - mouthSmooth) * k
-    setParam(core, mouthParam, mouthSmooth)
-    if (breathParam) {
-      const t = performance.now() / 1000
-      setParam(core, breathParam, 0.5 + 0.5 * Math.sin(t * 0.9))  // 呼吸 0~1
-    }
-  }
-  rafId = requestAnimationFrame(tick)
-}
-
-/** 音量 0~1 直驱口型（PlaybackManager.onVolume 每帧回调，值经 tick 低通后写入参数）。 */
+/** 音量 0~1 直驱口型（PlaybackManager.onVolume 每帧回调，值经 afterMotionUpdate 低通后写入参数）。 */
 function setMouth(v: number) {
   lastMouth = Math.max(0, Math.min(1, v))
+}
+
+/** 口型平滑状态：快开慢合低通，跟上语音节奏且无逐帧抖动。 */
+let mouthSmooth = 0
+let breathClock = 0
+
+/** 每帧（afterMotionUpdate）写口型与呼吸：音量目标逐帧 0.95 衰减（回调停更自动闭口）。 */
+function onAfterMotion() {
+  const core = (model as any)?.internalModel?.coreModel
+  if (!core || !mouthParam) return
+  lastMouth *= 0.95
+  const k = lastMouth > mouthSmooth ? 0.55 : 0.16
+  mouthSmooth += (lastMouth - mouthSmooth) * k
+  setParam(core, mouthParam, mouthSmooth)
+  if (breathParam) {
+    breathClock += 0.0167  // 帧累计时钟（正常 ticker 下等价实时；手动步进调试时可复现）
+    setParam(core, breathParam, 0.5 + 0.5 * Math.sin(breathClock * 0.9))  // 呼吸 0~1
+  }
 }
 
 /** 当前口型状态（调试探针：无头验证读参数值确认音量→口型链路）。 */
@@ -135,18 +152,42 @@ function getMouth() {
       param = core.getParameterValueById(mouthParam)
     }
   } catch { /* 参数不存在时忽略 */ }
-  return { lastMouth, param, mouthParam, scale: model?.scale?.x ?? null }
+  return {
+    lastMouth, param, mouthParam,
+    scale: model?.scale?.x ?? null, x: model?.x ?? null, y: model?.y ?? null,
+    baseW, baseH, host: hostSize(),
+  }
 }
 
 onBeforeUnmount(() => {
-  cancelAnimationFrame(rafId)
+  if (gestureTimer) clearTimeout(gestureTimer)
+  try { (model as any)?.internalModel?.off?.('afterMotionUpdate', onAfterMotion) } catch { /* 忽略 */ }
   ro?.disconnect()
   model?.destroy()
   app?.destroy(true)
 })
 
 defineExpose({ setMouth, getMouth })
-if (import.meta.env.DEV) (window as any).__live2dMouth = getMouth
+if (import.meta.env.DEV) {
+  ;(window as any).__live2dMouth = getMouth
+  ;(window as any).__live2dSetMouth = setMouth   // 调试探针：强制口型值做视觉验证
+  // 冻结探针：停 ticker 后手动以 dt=0、固定 now 推进模型——动作/物理/眨眼/自然运动
+  // 全部静止，仅 afterMotionUpdate 写的口型与呼吸变化 → 像素差即口型视觉证据
+  ;(window as any).__live2dFreeze = () => {
+    if (gestureTimer) clearTimeout(gestureTimer)
+    app?.ticker?.stop()
+  }
+  ;(window as any).__live2dUnfreeze = () => {
+    app?.ticker?.start()
+    scheduleGesture()
+  }
+  ;(window as any).__live2dStep = (n: number = 1) => {
+    for (let i = 0; i < n; i++) (model as any)?.internalModel?.update(0, 12345678)
+    app?.render()
+  }
+  // 顶点级验证探针：闭口/开口对比顶点位置缓冲（渲染器每帧绘制的正是这份数据）
+  ;(window as any).__live2dModel = () => model
+}
 </script>
 
 <style scoped>
