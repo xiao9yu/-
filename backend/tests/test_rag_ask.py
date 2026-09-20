@@ -46,6 +46,29 @@ def test_build_answer_prompt_numbers_context():
     assert "什么是梯度下降" in messages[1]["content"]
 
 
+def test_build_answer_prompt_without_hits_uses_general_knowledge_prompt():
+    """无命中时：不拼检索资料、不要求引用编号，改用通用知识提示词直接回答。"""
+    messages = build_answer_prompt("如何做红烧肉", [])
+    system = messages[0]["content"]
+    assert "检索资料" not in system
+    assert "基于你自己的知识" in system
+    assert "如何做红烧肉" in messages[1]["content"]
+    assert "[1]" not in messages[1]["content"]
+
+
+def test_rag_ask_without_hits_still_calls_llm_without_citations():
+    """检索空手（阈值过滤全丢/无相关语料）时仍调 LLM 通用回答，引用为空。"""
+    llm = FakeLLM()
+    result = rag_ask(
+        "如何做红烧肉", [_col()], top_k=2,   # 语料为梯度下降/房价/七层模型，BM25 召不回
+        vector_store=FakeVS(), embedder=FakeEmbedder(), llm=llm,
+    )
+    assert result.answer == llm.answer
+    assert len(llm.calls) == 1
+    assert result.citations == []
+    assert "检索资料" not in llm.calls[0][0]["content"]
+
+
 def test_rag_ask_returns_citations():
     llm = FakeLLM()
     result = rag_ask(

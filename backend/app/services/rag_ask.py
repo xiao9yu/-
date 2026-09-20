@@ -13,6 +13,13 @@ PROMPT_SYSTEM = (
     "若资料不足以回答，请明确说明。"
 )
 
+PROMPT_SYSTEM_GENERAL = (
+    "你是高职院校的教育智能助教，名字叫“朵娅”。知识库中没有找到与该问题相关的资料，"
+    "请基于你自己的知识直接回答学生的问题：以口语化、连贯的方式给出答案本身，"
+    "适合语音朗读；回答就是答案本身，不要提及“资料不足”“知识库中没有”等字样，"
+    "不得使用“参考答案”“答案一/二/三”等格式。"
+)
+
 
 @dataclass
 class RagAnswer:
@@ -35,15 +42,21 @@ def _select_hits(hits: list[RagHit], max_chars: int) -> list[tuple[int, RagHit]]
 
 
 def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000) -> list[dict]:
-    """把检索结果编号拼进 system prompt，超出长度截断。"""
+    """把检索结果编号拼进 system prompt，超出长度截断。
+
+    无命中（检索空手或精排阈值过滤掉全部弱命中）时改用通用知识提示词：
+    LLM 以自身知识直接回答，不引用、不推诿。
+    """
     blocks = []
     for i, h in _select_hits(hits, max_chars):
         page = f" 第{h.chunk.page}页" if h.chunk.page is not None else ""
         blocks.append(f"[{i}] 来源:{h.chunk.source}{page} 类型:{h.chunk.kind}\n{h.chunk.text}")
-    system = PROMPT_SYSTEM
     if blocks:
-        system += "\n\n【检索资料】\n" + "\n\n".join(blocks)
-    user = f"【问题】{question}\n要求：引用资料处标注编号如[1]；资料不足时说明。"
+        system = PROMPT_SYSTEM + "\n\n【检索资料】\n" + "\n\n".join(blocks)
+        user = f"【问题】{question}\n要求：引用资料处标注编号如[1]；资料不足时说明。"
+    else:
+        system = PROMPT_SYSTEM_GENERAL
+        user = f"【问题】{question}"
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
