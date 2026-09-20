@@ -27,20 +27,26 @@ let ro: ResizeObserver | null = null
 let baseW = 0   // 模型原始尺寸（scale=1 时捕获，适配计算不受后续缩放影响）
 let baseH = 0
 
+// 取景参数：只取模型顶部 45%（头+肩）充满舞台——整体等比缩放会让人物只有舞台
+// 1/3 宽（口型十几像素、看不清），顶部取景后头部约占舞台 7 成、口型清晰可辨；
+// 底部超出部分由舞台 overflow:hidden 裁掉，形象不变。
+const FRAME_FRACTION = 0.45
+const SCALE_CAP = 2.0   // 放大上限，防极小舞台时纹理糊
+
 /** 画布容器当前尺寸；flex 布局未结算时给兜底尺寸，避免 0 尺寸画布导致模型不可见。 */
 function hostSize(): { w: number; h: number } {
   const el = canvasHost.value
   return { w: el?.clientWidth || 320, h: el?.clientHeight || 480 }
 }
 
-/** 底部居中 + 等比缩放（面板较窄时以高度为准；cap 防窗口极大时模型糊）。 */
+/** 顶部取景：以头部高度充满舞台为准缩放，水平居中，头顶留一点呼吸空间。 */
 function fitModel() {
   if (!app || !model || !baseW || !baseH) return
   const { w, h } = hostSize()
-  const scale = Math.min(w / baseW, h / baseH, 1.5)
+  const scale = Math.min(h / (baseH * FRAME_FRACTION), SCALE_CAP)
   model.scale.set(scale)
   model.x = (w - baseW * scale) / 2
-  model.y = h - baseH * scale
+  model.y = h * 0.04
 }
 
 onMounted(async () => {
@@ -95,10 +101,18 @@ function setParam(core: any, id: string, v: number) {
   }
 }
 
+/** 口型平滑状态：快开慢合低通，跟上语音节奏且无逐帧抖动。 */
+let mouthSmooth = 0
+
 function tick() {
   if (model && mouthParam) {
     const core = (model as any).internalModel?.coreModel
-    setParam(core, mouthParam, lastMouth)
+    // 音量目标逐帧轻微衰减：回调停更（打断/静音/播放结束）后口型自动闭合，不留张嘴残影；
+    // 播放中 onVolume 每帧赋值覆盖衰减，衰减不生效。
+    lastMouth *= 0.95
+    const k = lastMouth > mouthSmooth ? 0.55 : 0.16
+    mouthSmooth += (lastMouth - mouthSmooth) * k
+    setParam(core, mouthParam, mouthSmooth)
     if (breathParam) {
       const t = performance.now() / 1000
       setParam(core, breathParam, 0.5 + 0.5 * Math.sin(t * 0.9))  // 呼吸 0~1
@@ -107,7 +121,7 @@ function tick() {
   rafId = requestAnimationFrame(tick)
 }
 
-/** 音量 0~1 直驱口型（PlaybackManager.onVolume 每帧回调）。 */
+/** 音量 0~1 直驱口型（PlaybackManager.onVolume 每帧回调，值经 tick 低通后写入参数）。 */
 function setMouth(v: number) {
   lastMouth = Math.max(0, Math.min(1, v))
 }
@@ -121,7 +135,7 @@ function getMouth() {
       param = core.getParameterValueById(mouthParam)
     }
   } catch { /* 参数不存在时忽略 */ }
-  return { lastMouth, param, mouthParam }
+  return { lastMouth, param, mouthParam, scale: model?.scale?.x ?? null }
 }
 
 onBeforeUnmount(() => {
