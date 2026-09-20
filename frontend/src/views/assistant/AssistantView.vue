@@ -394,6 +394,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .assistant-row { height: calc(100vh - 172px); }
+/* 列与卡片的高度用 flex 拉伸传递（el-col 拉伸后的高度对百分比解析不总是确定值，
+   height:100% 链条会失效导致画布被撑出巨大尺寸）：列高 100% 于行，卡 flex:1 于列 */
+.assistant-row .el-col { height: 100%; display: flex; }
 
 .card-head { display: flex; align-items: center; justify-content: space-between; }
 .head-icon { margin-right: 7px; color: var(--accent); vertical-align: -2px; }
@@ -402,7 +405,7 @@ onBeforeUnmount(() => {
 .voice-state { font-size: 12.5px; color: var(--text-3); }
 
 /* ---------- 知识库 ---------- */
-.kb-card { height: 100%; display: flex; flex-direction: column; }
+.kb-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .kb-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .kb-tabs :deep(.el-tabs__header) { margin-bottom: 4px; }
 .kb-upload :deep(.el-upload) { width: 100%; }
@@ -437,7 +440,7 @@ onBeforeUnmount(() => {
 .kb-item-del { flex: none; }
 
 /* ---------- 数字人 ---------- */
-.assistant-card { height: 100%; display: flex; flex-direction: column; }
+.assistant-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .assistant-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .assistant-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 

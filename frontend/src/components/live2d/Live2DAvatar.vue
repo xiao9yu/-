@@ -53,6 +53,12 @@ onMounted(async () => {
   canvasHost.value!.appendChild(view)
   try {
     model = await Live2DModel.from('/live2d/hiyori/hiyori.model3.json')
+    // pixi v7 下 renderer.plugins.interaction 返回 EventSystem（无 .on/.off，那是 v6
+    // InteractionManager 的 API）：插件 _render 每帧调 registerInteraction → TypeError
+    // → 渲染循环中断、模型画不出来。本项目不需要点击/焦点交互（口型由音量驱动），
+    // 实例级覆写掉这两个钩子（unregisterInteraction 同样会被调用）。
+    ;(model as any).registerInteraction = () => {}
+    ;(model as any).unregisterInteraction = () => {}
     baseW = model.width
     baseH = model.height
     app.stage.addChild(model)
