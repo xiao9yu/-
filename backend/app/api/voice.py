@@ -19,7 +19,7 @@ from ..db import get_db
 from ..models.user import User
 from ..services import kb_service
 from ..services.asr_service import ASRUnavailableError, transcribe
-from ..services.tts_service import TTSUnavailableError, split_sentences, synthesize, synthesize_sentences
+from ..services.tts_service import TTSUnavailableError, spoken_text, split_sentences, synthesize, synthesize_sentences
 from .deps import get_current_user
 
 router = APIRouter()
@@ -83,6 +83,9 @@ def _pipeline(wav: bytes, user: User, db: Session, cancel: threading.Event, emit
             nonlocal seq
             if cancel.is_set():
                 return
+            sentence = spoken_text(sentence)  # 朗读文本：去 [n] 编号与"参考答案："前缀
+            if not sentence.strip():
+                return  # 清洗后为空（如纯编号句）不合成
             try:
                 mp3 = synthesize(sentence)
             except TTSUnavailableError:

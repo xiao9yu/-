@@ -28,6 +28,29 @@ def test_split_sentences_drops_punct_only():
     assert tts_service.split_sentences("你好。。欢迎！\n") == ["你好。", "欢迎！"]
 
 
+def test_spoken_text_strips_cites_and_ref_prefix():
+    # 引用编号、markdown 强调符与"参考答案："式前缀仅朗读时去除，展示文本不受影响
+    assert tts_service.spoken_text("参考答案一：执行力强[1]。") == "执行力强。"
+    assert tts_service.spoken_text("**要点**[1][2]说明。") == "要点说明。"
+    assert tts_service.spoken_text("普通回答。") == "普通回答。"
+    assert tts_service.spoken_text("【1】仅编号。") == "仅编号。"
+    # 前缀清洗按句锚定：多句文本交给 synthesize_sentences 逐句清洗
+    assert tts_service.spoken_text("先沟通。参考答案二：再执行。") == "先沟通。参考答案二：再执行。"
+
+
+def test_synthesize_sentences_cleans_each_sentence(monkeypatch):
+    calls = []
+
+    def fake(text, voice):
+        calls.append(text)
+        return b"mp3"
+
+    monkeypatch.setattr(tts_service, "_communicate", fake)
+    out = list(tts_service.synthesize_sentences("参考答案：先沟通[1]。**参考答案二：**再执行。"))
+    assert [s for s, _ in out] == ["先沟通。", "再执行。"]  # 逐句清洗后才合成
+    assert calls == ["先沟通。", "再执行。"]
+
+
 def test_synthesize_caches(monkeypatch):
     calls = []
 

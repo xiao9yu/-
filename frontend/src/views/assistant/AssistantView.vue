@@ -260,9 +260,28 @@ function askSuggestion(s: string) {
   void onAsk()
 }
 
+/** 朗读文本清洗：去引用编号 [n]、markdown 强调符与"参考答案："式前缀（字幕显示保留原样）。
+ *  按句拆分后逐句清洗（与后端 spoken_text 同语义）："参考答案一："常出现在句中而非整段开头。 */
+function stripForSpeech(text: string): string {
+  const cleanOne = (s: string): string => {
+    let t = s.replace(/[*#`]+/g, '')
+    t = t.replace(/[\[【]\s*\d+(?:\s*[,，、]\s*\d+)*\s*[\]】]/g, '')
+    while (true) {
+      const next = t.replace(/^\s*(?:参考答案|参考思路|回答思路|答案)(?:\s*[一二三四五六七八九十\d]+)?\s*[:：]\s*/, '')
+      if (next === t) return t
+      t = next
+    }
+  }
+  return text.split(/((?<=[。！？；])\s*|\n+)/).map(cleanOne).join('')
+}
+
 async function onAsk() {
   const q = question.value.trim()
   if (!q || answering.value) return
+  // 在点击手势内同步创建/恢复 AudioContext：Chrome 自动播放策略只允许
+  // 手势激活窗口内创建的上下文出声；等到 LLM 流式回答结束再创建必然被静音
+  // （表现为"数字人不讲话"且口型不动）。
+  player.ensureContext()
   question.value = ''
   currentQ.value = q
   const msg: Answer = { text: '' }
@@ -282,7 +301,7 @@ async function onAsk() {
   } finally { answering.value = false }
   if (!muted.value && msg.text && !msg.text.startsWith('生成失败') && msg.text !== '（无内容）') {
     if (player.isPlaying) player.stop()
-    const blob = await speakText(msg.text.slice(0, 2000))
+    const blob = await speakText(stripForSpeech(msg.text).slice(0, 2000))
     if (blob) {
       voiceState.value = 'playing'
       await player.enqueue(blob)
@@ -333,6 +352,8 @@ function onVoiceClose(reason: string) {
 async function startTalk() {
   if (!voiceReady.value || answering.value || talking.value) return
   if (player.isPlaying) interrupt()
+  // 按住说话也是手势：此处创建 AudioContext 使后续 WS 音频分片可出声（自动播放策略）
+  player.ensureContext()
   try {
     if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   } catch {

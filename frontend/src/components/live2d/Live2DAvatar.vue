@@ -112,6 +112,18 @@ function setMouth(v: number) {
   lastMouth = Math.max(0, Math.min(1, v))
 }
 
+/** 当前口型状态（调试探针：无头验证读参数值确认音量→口型链路）。 */
+function getMouth() {
+  const core = (model as any)?.internalModel?.coreModel
+  let param: number | null = null
+  try {
+    if (core && mouthParam && typeof core.getParameterValueById === 'function') {
+      param = core.getParameterValueById(mouthParam)
+    }
+  } catch { /* 参数不存在时忽略 */ }
+  return { lastMouth, param, mouthParam }
+}
+
 onBeforeUnmount(() => {
   cancelAnimationFrame(rafId)
   ro?.disconnect()
@@ -119,7 +131,8 @@ onBeforeUnmount(() => {
   app?.destroy(true)
 })
 
-defineExpose({ setMouth })
+defineExpose({ setMouth, getMouth })
+if (import.meta.env.DEV) (window as any).__live2dMouth = getMouth
 </script>
 
 <style scoped>

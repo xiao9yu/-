@@ -26,6 +26,26 @@ class TTSUnavailableError(Exception):
     """TTS 不可用（网络/服务失败重试后仍失败）。"""
 
 
+_CITE_RE = re.compile(r"[\[【]\s*\d+(?:\s*[,，、]\s*\d+)*\s*[\]】]")
+_REF_PREFIX_RE = re.compile(r"^\s*(?:参考答案|参考思路|回答思路|答案)(?:\s*[一二三四五六七八九十\d]+)?\s*[:：]\s*")
+_MD_RE = re.compile(r"[*#`]+")
+
+
+def spoken_text(text: str) -> str:
+    """朗读文本清洗：去引用编号 [n]、markdown 强调符与"参考答案："式前缀。
+
+    显示文本（字幕）保留引用编号供溯源标签，朗读时编号与"参考答案"字样纯属噪音，
+    故仅清洗合成输入，不影响展示与引用数据。
+    """
+    text = _MD_RE.sub("", text)
+    text = _CITE_RE.sub("", text)
+    while True:
+        stripped = _REF_PREFIX_RE.sub("", text)
+        if stripped == text:
+            return text
+        text = stripped
+
+
 def split_sentences(text: str) -> list[str]:
     """中文标点/换行分句（保留句末标点，利于合成韵律）；超长句按逗号再切；纯标点句丢弃。"""
     raw = [p.strip() for p in _SENT_SPLIT.split(text) if p.strip()]
@@ -98,9 +118,16 @@ def synthesize(text: str, voice: str | None = None) -> bytes:
 
 
 def synthesize_sentences(text: str, voice: str | None = None):
-    """逐句合成生成器（语音问答路径）：(句子, mp3 bytes) 逐句产出；单句失败跳过。"""
+    """逐句合成生成器（语音问答路径）：(句子, mp3 bytes) 逐句产出；单句失败跳过。
+
+    逐句先经 spoken_text 清洗（去 [n] 编号与"参考答案："前缀），朗读内容不再念出
+    引用标记；返回的句子为清洗后文本，与合成内容一致。
+    """
     v = voice or settings.tts_voice
     for sentence in split_sentences(text):
+        sentence = spoken_text(sentence)
+        if not sentence.strip():
+            continue  # 清洗后为空（如纯编号句）不合成
         try:
             yield sentence, synthesize(sentence, v)
         except TTSUnavailableError:
