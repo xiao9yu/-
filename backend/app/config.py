@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     milvus_uri: str = "./data/milvus.db"
     # 数字人语音
     asr_model: str = "paraformer-zh"
-    tts_voice: str = "zh-CN-XiaoyiNeural"   # 晓伊·少女音：匹配朵娅的二次元形象
+    tts_voice: str = "zh-CN-XiaoyiNeural"   # 晓伊·元气少女音：匹配朵娅的二次元形象
+    tts_pitch: str = "+15Hz"                # 音调调高更萌（edge-tts 频率偏移）
 
 
 settings = Settings()

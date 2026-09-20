@@ -73,7 +73,7 @@ def _communicate(text: str, voice: str) -> bytes:
     import edge_tts
 
     async def _collect() -> bytes:
-        com = edge_tts.Communicate(text, voice)
+        com = edge_tts.Communicate(text, voice, pitch=settings.tts_pitch)
         buf = bytearray()
         async for chunk in com.stream():
             if chunk["type"] == "audio":
