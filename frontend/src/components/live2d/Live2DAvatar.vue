@@ -7,7 +7,9 @@
 // Live2D 渲染器封装：加载官方样例模型 + 音量驱动口型 + 呼吸/待机（Pixi 与 Vue 响应式隔离）
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import * as PIXI from 'pixi.js'
-import { Live2DModel } from 'pixi-live2d-display'
+// 用 cubism4 单版本子包（Hiyori 为 Cubism 4 模型）：模块级只要求 Live2DCubismCore，
+// 避免主入口 index 导入即抛 "Could not find Cubism 2 runtime"（官方 2019 年起已停发 live2d.min.js）
+import { Live2DModel } from 'pixi-live2d-display/cubism4'
 
 const canvasHost = ref<HTMLElement>()
 let app: PIXI.Application | null = null

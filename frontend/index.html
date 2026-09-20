@@ -7,6 +7,9 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- Cubism 4 运行时（Live2D 官方 core，本地托管）：pixi-live2d-display/cubism4 导入前必须以经典脚本加载，
+         否则模块求值抛 "Could not find Cubism 4 runtime"（数字人懒加载 chunk 在导航时才求值，顺序安全） -->
+    <script src="/live2d/live2dcubismcore.min.js"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
