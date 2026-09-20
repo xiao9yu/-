@@ -11,6 +11,11 @@ import * as PIXI from 'pixi.js'
 // 避免主入口 index 导入即抛 "Could not find Cubism 2 runtime"（官方 2019 年起已停发 live2d.min.js）
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 
+// 插件默认从 window.PIXI 取 Ticker（ESM 下不存在）→ autoUpdate 时无 ticker 可用，
+// 模型时间不推进（动作/表情冻结）。显式注册 v7 共享 Ticker（shared.autoStart=true，
+// 自带 RAF 循环），并保证与 App 渲染器同为 v7 实例（vite alias 强制单实例）。
+Live2DModel.registerTicker(PIXI.Ticker)
+
 const canvasHost = ref<HTMLElement>()
 let app: PIXI.Application | null = null
 let model: Live2DModel | null = null
