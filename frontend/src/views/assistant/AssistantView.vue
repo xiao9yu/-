@@ -2,7 +2,7 @@
 <template>
   <el-row :gutter="16" class="assistant-row">
     <!-- 知识库 -->
-    <el-col :span="8">
+    <el-col :span="7">
       <el-card class="kb-card">
         <template #header>
           <div class="card-head">
@@ -49,7 +49,7 @@
     </el-col>
 
     <!-- 对话区 -->
-    <el-col :span="16">
+    <el-col :span="12">
       <el-card class="chat-card">
         <template #header>
           <div class="card-head">
@@ -106,28 +106,58 @@
         </div>
         <div class="chat-input">
           <el-input v-model="question" placeholder="基于知识库提问，如：梯度下降的学习率怎么选？"
-            @keyup.enter="onAsk" :disabled="answering" size="large" class="chat-input-box" />
-          <el-button type="primary" size="large" :loading="answering" @click="onAsk" class="send-btn">
+            @keyup.enter="onAsk" :disabled="answering || voiceBusy" size="large" class="chat-input-box" />
+          <el-button type="primary" size="large" :loading="answering" :disabled="voiceBusy" @click="onAsk" class="send-btn">
             <el-icon class="btn-ico"><Promotion /></el-icon>发送
           </el-button>
         </div>
+      </el-card>
+    </el-col>
+
+    <!-- 数字人互动 -->
+    <el-col :span="5">
+      <el-card class="avatar-card">
+        <template #header>
+          <div class="card-head">
+            <span><el-icon class="head-icon"><Microphone /></el-icon>数字人互动</span>
+            <el-switch v-model="muted" size="small" inline-prompt active-text="静音" inactive-text="朗读" @change="onMute" />
+          </div>
+        </template>
+        <div class="avatar-stage">
+          <Live2DAvatar ref="avatarRef" />
+        </div>
+        <div class="avatar-state">{{ voiceStateText }}</div>
+        <el-button class="talk-btn" type="primary" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
+          :disabled="!voiceReady || answering" @pointerdown="startTalk" @pointerup="stopTalk"
+          @pointerleave="stopTalk" @pointercancel="stopTalk">
+          <el-icon class="btn-ico"><Microphone /></el-icon>{{ talking ? '松开结束' : '按住说话' }}
+        </el-button>
+        <el-button v-if="voiceState === 'playing' || voiceState === 'transcribing' || voiceState === 'thinking'"
+          class="stop-btn" type="danger" plain @click="interrupt">
+          <el-icon class="btn-ico"><VideoPause /></el-icon>打断
+        </el-button>
+        <el-alert type="info" :closable="false" class="avatar-alert"
+          title="需允许麦克风权限；语音识别本地完成，录音不出本机" />
       </el-card>
     </el-col>
   </el-row>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ChatDotRound, Collection, DataAnalysis, Delete, Document, MagicStick,
-  Notebook, Picture, Promotion, Tickets, UploadFilled,
+  Microphone, Notebook, Picture, Promotion, Tickets, UploadFilled, VideoPause,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   askStream, deleteKbDocument, listKbDocuments, loadChunkImage,
   uploadKbDocument, type KbCitation, type KbDocument,
 } from '@/api/kb'
+import { speakText, VoiceClient, type VoiceEvent } from '@/api/voice'
+import { decodeTo16k, PlaybackManager, toBase64, wavEncode } from '@/utils/audio'
+import Live2DAvatar from '@/components/live2d/Live2DAvatar.vue'
 
 interface Msg { role: 'user' | 'assistant'; text: string; citations?: KbCitation[]; at: string }
 
@@ -142,6 +172,25 @@ const messages = ref<Msg[]>([])
 const answering = ref(false)
 const chatBox = ref<HTMLElement>()
 const images = ref<Record<string, string>>({})   // chunk_id → objectURL（接口需 Bearer，img 标签无法带头，故 fetch blob）
+
+// ---------- 数字人 ----------
+const muted = ref(false)
+const voiceReady = ref(false)
+const talking = ref(false)
+const voiceState = ref<'idle' | 'recording' | 'transcribing' | 'thinking' | 'playing'>('idle')
+const avatarRef = ref<InstanceType<typeof Live2DAvatar>>()
+const player = new PlaybackManager()
+const voice = new VoiceClient()
+let recorder: MediaRecorder | null = null
+let chunks: Blob[] = []
+let stream: MediaStream | null = null
+let talkTimer: number | undefined
+let voiceMsg: Msg | null = null   // 语音模式的 assistant 消息（复用聊天框渲染）
+
+const voiceBusy = computed(() => ['recording', 'transcribing', 'thinking'].includes(voiceState.value))
+const voiceStateText = computed(() => ({
+  idle: '待机中', recording: '正在聆听…', transcribing: '识别中…', thinking: '思考中…', playing: '播报中',
+} as const)[voiceState.value])
 
 const suggests = ['梯度下降的学习率怎么选？', '什么是反向传播？', '过拟合如何解决？']
 
@@ -232,6 +281,104 @@ async function onAsk() {
     msg.text = `生成失败：${err?.message || '未知错误'}`
     ElMessage.error(err?.message || '问答失败')
   } finally { answering.value = false }
+  if (!muted.value && msg.text && !msg.text.startsWith('生成失败') && msg.text !== '（无内容）') {
+    if (player.isPlaying) player.stop()
+    const blob = await speakText(msg.text.slice(0, 2000))
+    if (blob) {
+      voiceState.value = 'playing'
+      await player.enqueue(blob)
+    }
+  }
+}
+
+function onVoiceEvent(e: VoiceEvent) {
+  if (e.type === 'status') {
+    if (e.state === 'ready' || e.state === 'cancelled') {
+      voiceReady.value = true
+      if (e.state !== 'ready') voiceState.value = 'idle'
+    } else if (e.state === 'transcribing') voiceState.value = 'transcribing'
+    else if (e.state === 'thinking') voiceState.value = 'thinking'
+  } else if (e.type === 'transcript') {
+    messages.value.push({ role: 'user', text: e.text, at: new Date().toISOString() })
+    voiceMsg = { role: 'assistant', text: '', at: new Date().toISOString() }
+    messages.value.push(voiceMsg)
+    scrollBottom()
+  } else if (e.type === 'citations') {
+    if (voiceMsg) {
+      voiceMsg.citations = e.items
+      e.items.filter((c) => c.kind === 'image').forEach((c) => { void loadImg(c.chunk_id) })
+      scrollBottom()
+    }
+  } else if (e.type === 'delta') {
+    if (voiceMsg) { voiceMsg.text += e.text; scrollBottom() }
+  } else if (e.type === 'audio') {
+    const bytes = atob(e.data)
+    const arr = new Uint8Array(bytes.length)
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+    void player.enqueue(new Blob([arr], { type: 'audio/mpeg' }))
+  } else if (e.type === 'done') {
+    if (voiceMsg && !voiceMsg.text) voiceMsg.text = '（无内容）'
+    voiceMsg = null
+    if (e.audio_total > 0) voiceState.value = 'playing'
+    else voiceState.value = 'idle'
+  } else if (e.type === 'error') {
+    voiceMsg = null
+    voiceState.value = 'idle'
+    ElMessage.error(e.message)
+  }
+}
+
+function onVoiceClose(reason: string) {
+  voiceReady.value = false
+  if (reason !== 'closed') ElMessage.warning(reason)
+}
+
+async function startTalk() {
+  if (!voiceReady.value || answering.value || talking.value) return
+  if (player.isPlaying) interrupt()
+  try {
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch {
+    ElMessage.error('无法访问麦克风，请检查浏览器权限')
+    return
+  }
+  chunks = []
+  recorder = new MediaRecorder(stream)
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
+  recorder.onstop = onRecordEnd
+  recorder.start()
+  talking.value = true
+  voiceState.value = 'recording'
+  talkTimer = window.setTimeout(stopTalk, 60000)  // 最长 60s 自动松开
+}
+
+function stopTalk() {
+  if (!talking.value) return
+  talking.value = false
+  if (talkTimer) { clearTimeout(talkTimer); talkTimer = undefined }
+  try { recorder?.stop() } catch { /* 已停止 */ }
+}
+
+async function onRecordEnd() {
+  const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' })
+  if (blob.size < 1000) { voiceState.value = 'idle'; return }  // 过短视为误触
+  try {
+    const buf16k = await decodeTo16k(blob)
+    voice.sendAudio(toBase64(wavEncode(buf16k)))
+  } catch {
+    voiceState.value = 'idle'
+    ElMessage.error('录音处理失败，请重试')
+  }
+}
+
+function interrupt() {
+  player.stop()
+  voice.cancel()
+  voiceState.value = 'idle'
+}
+
+function onMute(v: string | number | boolean) {
+  if (v) interrupt()  // 静音即打断当前播报
 }
 
 async function scrollBottom() {
@@ -239,7 +386,18 @@ async function scrollBottom() {
   if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
 
-onMounted(loadDocs)
+onMounted(() => {
+  player.onVolume = (v) => avatarRef.value?.setMouth(v)
+  player.onEnd = () => { voiceState.value = 'idle' }
+  voice.connect({ onEvent: onVoiceEvent, onClose: onVoiceClose })
+  void loadDocs()
+})
+
+onBeforeUnmount(() => {
+  voice.close()
+  player.stop()
+  stream?.getTracks().forEach((t) => t.stop())
+})
 </script>
 
 <style scoped>
@@ -389,4 +547,14 @@ onMounted(loadDocs)
 .chat-input { display: flex; gap: 10px; margin-top: 14px; }
 .chat-input-box :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px var(--border) inset; }
 .send-btn { letter-spacing: 2px; min-width: 96px; }
+
+/* ---------- 数字人 ---------- */
+.avatar-card { height: 100%; display: flex; flex-direction: column; }
+.avatar-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.avatar-stage { flex: 1; min-height: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.avatar-state { margin-top: 10px; text-align: center; font-size: 12.5px; color: var(--text-3); }
+.talk-btn { width: 100%; margin-top: 10px; }
+.stop-btn { width: 100%; margin-top: 8px; }
+.avatar-alert { margin-top: 10px; }
+.avatar-alert :deep(.el-alert__title) { font-size: 12px; }
 </style>
