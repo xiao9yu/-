@@ -27,6 +27,27 @@ def test_reranker_sorts_by_score_desc():
     assert [h.chunk.id for h in out] == ["c1", "c2"]
 
 
+def test_reranker_writes_sigmoid_scores_and_drops_weak_hits():
+    """sigmoid 相关度写回 h.score；低于阈值（绝对下限/最高分一半）的弱命中被丢弃而非填满 top_n。"""
+    from app.services.rerank import Reranker
+    r = Reranker.__new__(Reranker)
+    r.model = FakeModel([0.9, -3.0, -4.0, 0.2])   # sigmoid: 0.711, 0.047, 0.018, 0.550
+    hits = _hits(4)
+    out = r.rerank("q", hits, top_n=4)
+    # best=0.711 → floor=max(0.35, 0.3555)=0.3555：c1/c2 丢弃，c0/c3 保留
+    assert [h.chunk.id for h in out] == ["c0", "c3"]
+    assert out[0].score == pytest.approx(0.711, abs=1e-2)
+    assert hits[1].score == pytest.approx(0.047, abs=1e-2)   # 被丢弃的命中也写回相关度分
+
+
+def test_reranker_drops_all_when_best_is_below_absolute_floor():
+    """全部不相关时返回空列表（问答走"资料不足"口径），而不是硬凑 top_n 撒引用。"""
+    from app.services.rerank import Reranker
+    r = Reranker.__new__(Reranker)
+    r.model = FakeModel([-5.0, -6.0])   # sigmoid: 0.007, 0.002，best < 0.35
+    assert r.rerank("q", _hits(2), top_n=2) == []
+
+
 def test_reranker_instance_callable_for_hybrid_retrieve():
     """Reranker 实例可当 callable 传入 hybrid_retrieve（rerank(query, hits, top_n) 约定）。"""
     from app.services.rerank import Reranker

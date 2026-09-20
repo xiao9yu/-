@@ -1,6 +1,14 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能助教任务(18)
-"""精排服务：bge-reranker 对 RRF 粗排结果重打分（设计文档 §4.2.2 重排序要求）。"""
+"""精排服务：bge-reranker 对 RRF 粗排结果重打分（设计文档 §4.2.2 重排序要求）。
+
+transformers 直载（不用 sentence-transformers 的 CrossEncoder）：本机 HF 不可达时，
+CrossEncoder 经 AutoProcessor 加载，即使 local_files_only=True 也会对未缓存的
+preprocessor_config.json 等文件逐文件网络探测重试 → 预热线程失败 → get_reranker
+缓存 False 哨兵 → 全部问答静默降级为仅 RRF 融合，无关文档的低分块填满 top_k、
+引用溯源撒到所有文件。直载纯文本路径（tokenizer + 分类头）缓存齐备时完全离线。
+"""
 import logging
+import math
 import threading
 
 from .embeddings import local_cache_ready
@@ -8,23 +16,67 @@ from .rag import RagHit
 
 logger = logging.getLogger("rerank")
 
+_ABS_FLOOR = 0.35   # 相关度绝对下限（sigmoid 后）：低于此分的块视为不相关，不引用
+_REL_RATIO = 0.5    # 相对下限：低于本问最高分一半的块视为不相关
+_MAX_LEN = 1024     # 截断长度：chunk 800 字 + 问句，XLM-R 中文约 1 token/字
+
+
+def _sigmoid(x: float) -> float:
+    """防溢出 sigmoid（math.exp 对 |x|>709 抛 OverflowError）。"""
+    x = max(-100.0, min(100.0, x))
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+class _TransformerRerankModel:
+    """transformers 直载模型，对外提供 CrossEncoder 式 predict(pairs) 接口（测试 seam）。"""
+
+    def __init__(self, model_name: str, local_files_only: bool):
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            model_name, local_files_only=local_files_only
+        )
+        self._model = AutoModelForSequenceClassification.from_pretrained(
+            model_name, local_files_only=local_files_only
+        )
+        self._model.eval()
+
+    def predict(self, pairs: list[tuple[str, str]]) -> list[float]:
+        """逐对打原始 logits（调用方 sigmoid 成相关度；兼容 CrossEncoder.predict 约定）。"""
+        import torch
+
+        enc = self._tokenizer(
+            pairs, padding=True, truncation=True, max_length=_MAX_LEN, return_tensors="pt"
+        )
+        with torch.no_grad():
+            logits = self._model(**enc).logits[:, 0]
+        return logits.tolist()
+
 
 class Reranker:
     def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
-        # 缓存齐备时离线加载，避免 HF 网络重试拖慢首问（modules.json 缺失会自动
-        # 降级为 transformers 路径，本地 config.json+权重齐备即可加载）
+        # 缓存齐备时离线加载，避免 HF 网络重试拖慢首问
         local = local_cache_ready(model_name)
-        from sentence_transformers import CrossEncoder
-
-        self.model = CrossEncoder(model_name, local_files_only=local)
+        self.model = _TransformerRerankModel(model_name, local_files_only=local)
 
     def rerank(self, query: str, hits: list[RagHit], top_n: int = 5) -> list[RagHit]:
-        """逐对打分（query, chunk.text）→ 按分降序取 top_n。"""
+        """逐对打分 → sigmoid 相关度 → 阈值过滤弱命中 → 按分降序取 top_n。
+
+        阈值过滤是引用溯源不越界的保障：无关文档的块即使被 RRF 粗排混入，
+        得分也低，在此被丢弃；否则 top_k 恒被填满、引用标签散落所有文件。
+        """
         if not hits:
             return []
-        scores = self.model.predict([[query, h.chunk.text] for h in hits])
-        order = sorted(range(len(scores)), key=lambda i: -scores[i])
-        return [hits[i] for i in order[:top_n]]
+        logits = self.model.predict([[query, h.chunk.text] for h in hits])
+        scores = [_sigmoid(x) for x in logits]
+        floor = max(_ABS_FLOOR, _REL_RATIO * max(scores))
+        kept: list[tuple[float, RagHit]] = []
+        for s, h in zip(scores, hits):
+            h.score = s  # 写回相关度分，供下游观测
+            if s >= floor:
+                kept.append((s, h))
+        kept.sort(key=lambda t: -t[0])
+        return [h for _, h in kept[:top_n]]
 
     def __call__(self, query: str, hits: list[RagHit], top_n: int = 5) -> list[RagHit]:
         """兼容 hybrid_retrieve 的 callable 约定（rerank(query, hits, top_n)）。
@@ -45,7 +97,7 @@ def get_reranker() -> Reranker | None:
 
     终审修复：并发锁防重入——预热线程（main.lifespan 启动时后台加载）持锁期间，
     并发请求不排队等待（非阻塞获取），直接返回 None 降级为仅 RRF 融合；
-    避免请求线程阻塞在 CrossEncoder 下载/读盘上，也杜绝模型被并发二次构建。
+    避免请求线程阻塞在模型下载/读盘上，也杜绝模型被并发二次构建。
     获锁后双重检查哨兵，预热期间被其他线程抢先加载完成时直接复用。
     """
     global _reranker
