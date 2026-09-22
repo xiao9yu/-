@@ -147,11 +147,13 @@ def answer_events(question: str, user: User, db: Session, *,
     ask_stream 的 SSE 字符串仅是它的薄包装；WS 语音链路（api/voice.py）直接消费本生成器。
     """
     try:
-        # 经本模块 get_embedder 解析嵌入模型后显式传入 hybrid_retrieve：
-        # 避免 rag 模块内部再走真实 bge-m3（测试 monkeypatch 本模块 get_embedder 即可覆盖全链路）
+        # 经本模块 get_embedder/get_vector_store 显式解析后传入 hybrid_retrieve：
+        # 避免 rag 模块内部各自取真实单例——否则本模块的 monkeypatch 对检索路径是死的，
+        # 测试会静默打真实 FAISS 单例（维度冲突 → faiss AssertionError，见 Plan C Task 6 Minor #1）
         emb = embedder or get_embedder()
+        vs = vector_store or get_vector_store()
         hits = hybrid_retrieve(question, _load_collections(user, db), top_k=5,
-                               vector_store=vector_store, embedder=emb, rerank=reranker)
+                               vector_store=vs, embedder=emb, rerank=reranker)
         selected = _select_hits(hits, 4000)
         citations = [
             {
