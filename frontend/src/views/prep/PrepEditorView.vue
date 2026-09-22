@@ -1,61 +1,74 @@
 <!-- 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能备课任务(17) -->
 <template>
   <div>
-    <el-page-header class="page-header" :content="lesson?.title || '教案编辑'" @back="$router.push(`/prep/course/${lesson?.course_id}`)" />
-    <el-row :gutter="16" style="margin-top: 16px">
-      <el-col :span="17">
-        <el-card>
-          <template #header>
-            <div class="card-head">
-              <span><el-icon class="head-icon"><EditPen /></el-icon>内容编辑</span>
-              <div>
-                <!-- 导出按钮按教案类型显示（后端映射：docx←plan/case，pptx←cw，pdf←exercises/exam） -->
-                <el-button v-if="['plan', 'case'].includes(lesson?.lesson_type || '')" @click="onExport('docx')">
-                  <el-icon class="btn-ico"><Download /></el-icon>导出 Word
-                </el-button>
-                <el-button v-if="lesson?.lesson_type === 'cw'" @click="onExport('pptx')">
-                  <el-icon class="btn-ico"><Download /></el-icon>导出 PPT
-                </el-button>
-                <el-button v-if="['exercises', 'exam'].includes(lesson?.lesson_type || '')" @click="onExport('pdf')">
-                  <el-icon class="btn-ico"><Download /></el-icon>导出 PDF
-                </el-button>
-                <el-button type="primary" :loading="saving" @click="onSave">保存（新版本）</el-button>
+    <!-- 讲课模式：整页切换为数字人讲课面板（仅课件类型） -->
+    <PrepLecturePanel
+      v-if="lectureMode"
+      :slides="lesson?.content_json?.幻灯片 || []"
+      :lesson-title="lesson?.title"
+      @close="lectureMode = false"
+    />
+    <template v-else>
+      <el-page-header class="page-header" :content="lesson?.title || '教案编辑'" @back="$router.push(`/prep/course/${lesson?.course_id}`)" />
+      <el-row :gutter="16" style="margin-top: 16px">
+        <el-col :span="17">
+          <el-card>
+            <template #header>
+              <div class="card-head">
+                <span><el-icon class="head-icon"><EditPen /></el-icon>内容编辑</span>
+                <div>
+                  <!-- 导出按钮按教案类型显示（后端映射：docx←plan/case，pptx←cw，pdf←exercises/exam） -->
+                  <el-button v-if="['plan', 'case'].includes(lesson?.lesson_type || '')" @click="onExport('docx')">
+                    <el-icon class="btn-ico"><Download /></el-icon>导出 Word
+                  </el-button>
+                  <el-button v-if="lesson?.lesson_type === 'cw'" @click="onExport('pptx')">
+                    <el-icon class="btn-ico"><Download /></el-icon>导出 PPT
+                  </el-button>
+                  <el-button v-if="lesson?.lesson_type === 'cw'" type="primary" plain
+                    :disabled="!(lesson?.content_json?.幻灯片 || []).length" @click="enterLecture">
+                    <el-icon class="btn-ico"><VideoPlay /></el-icon>数字人讲课
+                  </el-button>
+                  <el-button v-if="['exercises', 'exam'].includes(lesson?.lesson_type || '')" @click="onExport('pdf')">
+                    <el-icon class="btn-ico"><Download /></el-icon>导出 PDF
+                  </el-button>
+                  <el-button type="primary" :loading="saving" @click="onSave">保存（新版本）</el-button>
+                </div>
               </div>
+            </template>
+            <div class="editor-frame">
+              <Toolbar style="border-bottom: 1px solid #eef0f6" :editor="editorRef" :default-config="toolbarConfig" />
+              <Editor style="height: 480px; overflow-y: hidden" v-model="html" :default-config="editorConfig" @on-created="onCreated" />
             </div>
-          </template>
-          <div class="editor-frame">
-            <Toolbar style="border-bottom: 1px solid #eef0f6" :editor="editorRef" :default-config="toolbarConfig" />
-            <Editor style="height: 480px; overflow-y: hidden" v-model="html" :default-config="editorConfig" @on-created="onCreated" />
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="7">
-        <el-card>
-          <template #header>
-            <div class="card-head"><el-icon class="head-icon"><Search /></el-icon>资源引用（检索后一键插入）</div>
-          </template>
-          <el-input v-model="refQuery" placeholder="检索课程资源">
-            <template #append><el-button :loading="refSearching" @click="onRefSearch">检索</el-button></template>
-          </el-input>
-          <div v-for="h in refHits" :key="h.ref" class="ref-hit">
-            <div class="ref-name"><b>{{ h.ref }}</b></div>
-            <div class="ref-excerpt">{{ h.excerpt }}</div>
-            <el-button size="small" text type="primary" @click="onInsertRef(h)">插入正文</el-button>
-          </div>
-          <div v-if="!refHits.length" class="ref-empty">输入关键词检索课程资源，点击「插入正文」引用到编辑器中</div>
-        </el-card>
-        <el-card style="margin-top: 16px">
-          <template #header>
-            <div class="card-head"><el-icon class="head-icon"><Clock /></el-icon>版本历史</div>
-          </template>
-          <el-timeline>
-            <el-timeline-item v-for="v in versions" :key="v.version" :timestamp="`v${v.version}`">
-              <el-button size="small" @click="onRestore(v.version)">恢复此版本</el-button>
-            </el-timeline-item>
-          </el-timeline>
-        </el-card>
-      </el-col>
-    </el-row>
+          </el-card>
+        </el-col>
+        <el-col :span="7">
+          <el-card>
+            <template #header>
+              <div class="card-head"><el-icon class="head-icon"><Search /></el-icon>资源引用（检索后一键插入）</div>
+            </template>
+            <el-input v-model="refQuery" placeholder="检索课程资源">
+              <template #append><el-button :loading="refSearching" @click="onRefSearch">检索</el-button></template>
+            </el-input>
+            <div v-for="h in refHits" :key="h.ref" class="ref-hit">
+              <div class="ref-name"><b>{{ h.ref }}</b></div>
+              <div class="ref-excerpt">{{ h.excerpt }}</div>
+              <el-button size="small" text type="primary" @click="onInsertRef(h)">插入正文</el-button>
+            </div>
+            <div v-if="!refHits.length" class="ref-empty">输入关键词检索课程资源，点击「插入正文」引用到编辑器中</div>
+          </el-card>
+          <el-card style="margin-top: 16px">
+            <template #header>
+              <div class="card-head"><el-icon class="head-icon"><Clock /></el-icon>版本历史</div>
+            </template>
+            <el-timeline>
+              <el-timeline-item v-for="v in versions" :key="v.version" :timestamp="`v${v.version}`">
+                <el-button size="small" @click="onRestore(v.version)">恢复此版本</el-button>
+              </el-timeline-item>
+            </el-timeline>
+          </el-card>
+        </el-col>
+      </el-row>
+    </template>
   </div>
 </template>
 
@@ -63,9 +76,10 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Clock, Download, EditPen, Search } from '@element-plus/icons-vue'
+import { Clock, Download, EditPen, Search, VideoPlay } from '@element-plus/icons-vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
+import PrepLecturePanel from './PrepLecturePanel.vue'
 import {
   addLessonMedia, exportLesson, getLesson, listVersions, restoreLesson,
   searchResources, updateLesson, uploadFile, type Lesson,
@@ -78,6 +92,7 @@ const html = ref('')
 const saving = ref(false)
 const versions = ref<any[]>([])
 const refQuery = ref('')
+const lectureMode = ref(false)
 const refHits = ref<any[]>([])
 const refSearching = ref(false)
 
@@ -104,6 +119,8 @@ const editorConfig = {
     },
   },
 }
+
+function enterLecture() { lectureMode.value = true }
 
 function onCreated(editor: any) { editorRef.value = editor }
 
