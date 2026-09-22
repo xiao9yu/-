@@ -19,8 +19,9 @@ _COURSEWARE_PROMPT = (
     "课程名称：{course_name}\n学科：{subject}\n章节：{chapter}\n"
     "教学目标：{objectives}\n课时：{hours}\n"
     "{resources_section}"
-    "请以 JSON 格式输出，键为中文：标题（字符串）、幻灯片（列表，每项含 标题/要点（字符串列表），"
-    "10~15 页）。不要输出其他内容。"
+    "请以 JSON 格式输出，键为中文：标题（字符串）、幻灯片（列表，每项含 标题/要点（字符串列表）/"
+    "讲稿（字符串，该页的口语化串讲：面向学生讲课的口吻，每页 2~4 句，开场页可含欢迎语，"
+    "不照念要点原文，不用 markdown 与引用编号），10~15 页）。不要输出其他内容。"
 )
 
 _EXERCISES_PROMPT = (
@@ -138,6 +139,10 @@ def validate_courseware(data: dict) -> None:
     _require_keys(data, ["标题", "幻灯片"])
     if not isinstance(data["幻灯片"], list) or not data["幻灯片"]:
         raise BizError(502, "生成结果缺少幻灯片内容，请重试")
+    for slide in data["幻灯片"]:
+        _require_keys(slide, ["标题", "要点", "讲稿"])
+        if not isinstance(slide["讲稿"], str) or not slide["讲稿"].strip():
+            raise BizError(502, "生成结果缺少讲稿，请重试")
 
 
 def validate_exercises(data: dict) -> None:

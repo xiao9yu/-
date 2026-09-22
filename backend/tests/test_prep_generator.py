@@ -29,8 +29,10 @@ LESSON_PLAN = {
 COURSEWARE = {
     "标题": "机器学习基础课件",
     "幻灯片": [
-        {"标题": "梯度下降", "要点": ["沿负梯度方向迭代", "学习率控制步长"]},
-        {"标题": "线性回归", "要点": ["拟合直线", "房价预测"]},
+        {"标题": "梯度下降", "要点": ["沿负梯度方向迭代", "学习率控制步长"],
+         "讲稿": "同学们好，今天我们来学习梯度下降。它的核心思想是沿负梯度方向一步步迭代，让损失函数不断下降。"},
+        {"标题": "线性回归", "要点": ["拟合直线", "房价预测"],
+         "讲稿": "接下来看线性回归。我们用一条直线拟合数据，最典型的应用就是房价预测。"},
     ],
 }
 
@@ -135,3 +137,26 @@ def test_validators_accept_valid_and_reject_missing_keys():
         validate_exam({"试卷标题": "缺大题"})
     with pytest.raises(BizError):
         validate_case({"标题": "缺案例描述"})
+
+
+COURSEWARE_NO_SCRIPT = {
+    "标题": "机器学习基础课件",
+    "幻灯片": [{"标题": "梯度下降", "要点": ["沿负梯度方向迭代"]}],
+}
+
+
+def test_validate_courseware_requires_script_per_slide():
+    """每页必须含非空讲稿：缺失或纯空白均 502；齐全则通过。"""
+    with pytest.raises(BizError):
+        validate_courseware(COURSEWARE_NO_SCRIPT)
+    with pytest.raises(BizError):
+        validate_courseware({"标题": "课件", "幻灯片": [{"标题": "梯度下降", "要点": [], "讲稿": "   "}]})
+    validate_courseware(COURSEWARE)  # 每页含讲稿 → 通过
+
+
+def test_generate_courseware_prompt_asks_for_script():
+    llm = FakeLLM(COURSEWARE)
+    generate_courseware("人工智能导论", "人工智能", "第3章", "目标", "2课时", llm=llm)
+    prompt_text = llm.calls[0]["messages"][-1]["content"]
+    assert "讲稿" in prompt_text
+    assert "口语化" in prompt_text
