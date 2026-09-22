@@ -120,7 +120,8 @@ function setParam(core: any, id: string, v: number) {
   }
 }
 
-/** 音量 0~1 直驱口型（PlaybackManager.onVolume 每帧回调，值经 afterMotionUpdate 低通后写入参数）。 */
+/** 音量 0~1 直驱口型（PlaybackManager 每帧回调：有时间轴时已是"音节包络 × 音量"的合成值，
+ *  经 afterMotionUpdate 低通后写入参数）。 */
 function setMouth(v: number) {
   lastMouth = Math.max(0, Math.min(1, v))
 }
@@ -129,12 +130,14 @@ function setMouth(v: number) {
 let mouthSmooth = 0
 let breathClock = 0
 
-/** 每帧（afterMotionUpdate）写口型与呼吸：音量目标逐帧 0.95 衰减（回调停更自动闭口）。 */
+/** 每帧（afterMotionUpdate）写口型与呼吸。
+ *  不再做帧间衰减：驱动方（PlaybackManager）每帧都给新值，停播时显式给 0；
+ *  旧实现的 0.95 衰减是为"回调停更"兜底，保留它只会白白压掉 5% 张口幅度。 */
 function onAfterMotion() {
   const core = (model as any)?.internalModel?.coreModel
   if (!core || !mouthParam) return
-  lastMouth *= 0.95
-  const k = lastMouth > mouthSmooth ? 0.55 : 0.16
+  // 快开慢合：开（目标更大）跟随快，合（目标更小）收得慢，贴近真实口部惯量
+  const k = lastMouth > mouthSmooth ? 0.6 : 0.3
   mouthSmooth += (lastMouth - mouthSmooth) * k
   setParam(core, mouthParam, mouthSmooth)
   if (breathParam) {

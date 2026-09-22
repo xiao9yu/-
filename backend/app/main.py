@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .api import auth, files, kb, learn, prep, voice
+from .api import auth, chat, files, kb, learn, prep, voice
 from .core.exceptions import register_exception_handlers
 from .db import Base, engine
 from .services.embeddings import EmbedderError, get_embedder
@@ -40,6 +40,15 @@ def _preheat_models() -> None:
         logger.info("ASR 模型预热完成" if ok_asr else "ASR 模型预热跳过（语音输入将提示打字）")
     except Exception:
         logger.warning("ASR 预热异常（忽略，语音输入将降级）", exc_info=True)
+    try:
+        # 流式语音（自然对话）：VAD + 流式 ASR 合起来近 900MB，启动线程里顺序加载，
+        # 加载完成前 /api/voice/capabilities 的 stream 为 false，前端不出自然对话入口
+        from .services import asr_stream
+        asr_stream.preload()
+        logger.info("流式语音预热完成（VAD=%s, 流式ASR=%s）",
+                    asr_stream.get_vad() is not None, asr_stream.get_stream_model() is not None)
+    except Exception:
+        logger.warning("流式语音预热异常（忽略，自然对话模式不可用）", exc_info=True)
 
 
 @asynccontextmanager
@@ -60,6 +69,7 @@ app.include_router(kb.router, prefix="/api/kb", tags=["kb"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(learn.router, prefix="/api/learn", tags=["learn"])
 app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 
 @app.get("/api/health")

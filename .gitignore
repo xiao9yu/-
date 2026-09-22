@@ -1,6 +1,10 @@
 backend/.env
 backend/uploads/
 backend/data/
+# 本地运行期产生的 SQLite 数据库（含会话/消息），不入库
+backend/*.db
+backend/*.db-journal
+backend/*.db-wal
 __pycache__/
 *.pyc
 node_modules/

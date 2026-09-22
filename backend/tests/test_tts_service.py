@@ -9,8 +9,10 @@ from app.services.tts_service import TTSUnavailableError
 @pytest.fixture(autouse=True)
 def clear_cache():
     tts_service._cache.clear()
+    tts_service._timed_cache.clear()
     yield
     tts_service._cache.clear()
+    tts_service._timed_cache.clear()
 
 
 def test_split_sentences_basic():
@@ -82,3 +84,43 @@ def test_synthesize_sentences_skips_failed(monkeypatch):
     monkeypatch.setattr(tts_service, "_communicate", flaky)
     out = list(tts_service.synthesize_sentences("好句。坏句。也好。"))
     assert [s for s, _ in out] == ["好句。", "也好。"]
+
+
+def test_synthesize_timed_returns_marks_and_caches(monkeypatch):
+    """口型路径：返回 (mp3, 词级时间轴)，与字节路径共用缓存键但各自缓存。"""
+    calls = []
+
+    def fake(text, voice):
+        calls.append(text)
+        marks = [{"text": "你", "t0": 0.0, "t1": 0.2}, {"text": "好", "t0": 0.2, "t1": 0.45}]
+        return b"mp3-timed", marks
+
+    monkeypatch.setattr(tts_service, "_communicate_timed", fake)
+    data, marks = tts_service.synthesize_timed("你好")
+    assert data == b"mp3-timed"
+    assert [m["text"] for m in marks] == ["你", "好"]
+    assert marks[1]["t0"] == 0.2
+    # 命中缓存不再调用合成
+    again, marks2 = tts_service.synthesize_timed("你好")
+    assert again == b"mp3-timed" and marks2 == marks
+    assert calls == ["你好"]
+
+
+def test_synthesize_timed_retry_then_raise(monkeypatch):
+    def boom(text, voice):
+        raise RuntimeError("网络失败")
+
+    monkeypatch.setattr(tts_service, "_communicate_timed", boom)
+    with pytest.raises(TTSUnavailableError):
+        tts_service.synthesize_timed("你好")
+
+
+def test_synthesize_timed_separate_cache_from_bytes_path(monkeypatch):
+    """两条路径缓存互不污染：字节路径命中不会让口型路径拿到空时间轴。"""
+    monkeypatch.setattr(tts_service, "_communicate", lambda t, v: b"plain")
+    monkeypatch.setattr(tts_service, "_communicate_timed",
+                        lambda t, v: (b"timed", [{"text": "你", "t0": 0.0, "t1": 0.3}]))
+    assert tts_service.synthesize("你好") == b"plain"
+    data, marks = tts_service.synthesize_timed("你好")
+    assert data == b"timed" and len(marks) == 1
+    assert tts_service.synthesize("你好") == b"plain"

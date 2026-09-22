@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     vector_backend: str = "milvus"  # milvus | faiss
     milvus_uri: str = "./data/milvus.db"
     # 数字人语音
-    asr_model: str = "paraformer-zh"
+    asr_model: str = "paraformer-zh"        # 批量离线转写（按住说话 / 流式降级兜底）
+    asr_stream_model: str = "paraformer-zh-streaming"   # 流式增量转写（自然轮次对话）
+    vad_model: str = "fsmn-vad"             # 服务端端点检测（自动断句）
+    voice_stream_enabled: bool = True       # 流式语音会话总开关（模型不可用时自动关闭）
     tts_voice: str = "zh-CN-XiaoyiNeural"   # 晓伊·元气少女音：匹配朵娅的二次元形象
     tts_pitch: str = "+15Hz"                # 音调调高更萌（edge-tts 频率偏移）
 

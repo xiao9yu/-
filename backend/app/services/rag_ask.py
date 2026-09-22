@@ -21,6 +21,12 @@ PROMPT_SYSTEM_GENERAL = (
     "不得使用“参考答案”“答案一/二/三”等格式。"
 )
 
+PROMPT_HISTORY_HINT = (
+    "【对话历史】本轮是连续对话的后续轮次：请结合上文理解学生的追问"
+    "（如“它”“这个”“那为什么”指代前文），保持连贯，已讲过的内容不要重复展开；"
+    "若本轮问题与上文无关，按新问题独立作答。"
+)
+
 
 @dataclass
 class RagAnswer:
@@ -42,11 +48,15 @@ def _select_hits(hits: list[RagHit], max_chars: int) -> list[tuple[int, RagHit]]
     return selected
 
 
-def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000) -> list[dict]:
+def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000,
+                        history: list[dict] | None = None) -> list[dict]:
     """把检索结果编号拼进 system prompt，超出长度截断。
 
     无命中（检索空手或精排阈值过滤掉全部弱命中）时改用通用知识提示词：
     LLM 以自身知识直接回答，不引用、不推诿。
+
+    history 非空时把历史轮次作为正式对话消息插在 system 与当前 user 之间：
+    让模型按"对话"而非"单发问答"理解，是追问能接得上话的前提。
     """
     blocks = []
     for i, h in _select_hits(hits, max_chars):
@@ -58,7 +68,16 @@ def build_answer_prompt(question: str, hits: list[RagHit], max_chars: int = 4000
     else:
         system = PROMPT_SYSTEM_GENERAL
         user = f"【问题】{question}"
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    if history:
+        system = f"{system}\n\n{PROMPT_HISTORY_HINT}"
+    messages = [{"role": "system", "content": system}]
+    for item in history or []:
+        role = item.get("role")
+        content = str(item.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user})
+    return messages
 
 
 def rag_ask(

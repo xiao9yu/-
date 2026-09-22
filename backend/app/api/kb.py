@@ -1,5 +1,6 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-智能助教任务(18)
 """知识库接口：文档上传/列表/删除、知识块图片、SSE 流式问答。"""
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -12,7 +13,7 @@ from ..core.exceptions import BizError
 from ..db import get_db
 from ..models.kb import KbChunk, KbDocument
 from ..models.user import Role, User
-from ..services import kb_service
+from ..services import chat_service, kb_service
 from ..services.embeddings import EmbedderError
 from ..services.rerank import get_reranker
 from .deps import get_current_user
@@ -22,6 +23,7 @@ router = APIRouter()
 
 class AskIn(BaseModel):
     question: str
+    session_id: int | None = None   # 非空即多轮：续接该会话上下文并落库
 
 
 @router.post("/documents")
@@ -74,10 +76,21 @@ def chunk_image(chunk_id: str, user: User = Depends(get_current_user), db: Sessi
 
 @router.post("/ask")
 def ask(data: AskIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """流式问答（SSE）：citations → delta* → done；失败发 error 事件。"""
+    """流式问答（SSE）：session → citations → delta* → done；失败发 error 事件。
+
+    首帧恒为 session 事件（含会话 id 与本轮起始轮数）：前端据此把 session_id 写回状态，
+    后续提问带上即可续接上下文；session_id 传空/无效则新建会话。
+    """
     if not data.question.strip():
         raise BizError(400, "问题不能为空")
-    return StreamingResponse(
-        kb_service.ask_stream(data.question, user, db, reranker=get_reranker()),
-        media_type="text/event-stream",
-    )
+    session = chat_service.resolve_session(db, user, data.session_id, data.question)
+    reranker = get_reranker()
+
+    def gen():
+        yield ("event: session\ndata: "
+               + json.dumps({"id": session.id, "turns": session.turns}, ensure_ascii=False)
+               + "\n\n")
+        yield from kb_service.ask_stream(data.question, user, db,
+                                         reranker=reranker, session=session)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")

@@ -55,8 +55,17 @@
           <div class="card-head">
             <span><el-icon class="head-icon"><ChatDotRound /></el-icon>朵娅 · 数字人助教</span>
             <div class="head-side">
-              <el-tag size="small" effect="plain" type="success">知识库 RAG</el-tag>
-              <span class="voice-state">{{ voiceStateText }}</span>
+              <el-tag v-if="turns > 0" size="small" type="warning" effect="light" class="turn-tag">
+                第 {{ turns + 1 }} 轮 · 记得上文
+              </el-tag>
+              <el-tag v-else size="small" effect="plain" type="success">知识库 RAG</el-tag>
+              <el-button size="small" text @click="openHistory" class="head-btn">
+                <el-icon class="btn-ico"><Clock /></el-icon>历史对话
+              </el-button>
+              <el-button size="small" text :disabled="turns === 0 && !currentQ" @click="newChat" class="head-btn">
+                <el-icon class="btn-ico"><Plus /></el-icon>新对话
+              </el-button>
+              <span class="voice-state">{{ displayStateText }}</span>
               <el-switch v-model="muted" size="small" inline-prompt active-text="静音" inactive-text="朗读" @change="onMute" />
             </div>
           </div>
@@ -68,10 +77,16 @@
             <Live2DAvatar ref="avatarRef" />
 
             <!-- 当前一轮问答气泡（从数字人发出） -->
-            <div v-if="currentQ" class="talk-bubble">
-              <div class="bubble-q">{{ currentQ }}</div>
+            <div v-if="currentQ || partial" class="talk-bubble">
+              <div class="bubble-q">
+                <el-tag v-if="partial && !currentA?.text" size="small" type="info" effect="plain" class="live-tag">
+                  正在听
+                </el-tag>
+                {{ currentA?.text ? currentQ : (partial || currentQ) }}
+              </div>
               <div class="bubble-a">
                 <span v-if="currentA?.text">{{ currentA.text }}</span>
+                <span v-else-if="partial" class="bubble-hint">说完停一下，我会自动接话</span>
                 <span v-else class="typing"><i /><i /><i /></span>
               </div>
               <div v-if="currentA?.citations?.length" class="bubble-cites">
@@ -89,30 +104,42 @@
               <span class="suggest-chips">
                 <span v-for="s in suggests" :key="s" class="suggest-chip" @click="askSuggestion(s)">{{ s }}</span>
               </span>
+              <span v-if="turns > 0" class="welcome-sub resume-hint">
+                正在继续上次对话（已 {{ turns }} 轮）——可以直接追问，我记着上文
+              </span>
             </div>
 
-            <div v-if="!currentQ" class="avatar-hint">打字提问或按住说话，朵娅语音回答</div>
+            <div v-if="!currentQ && !partial" class="avatar-hint">
+              {{ streamMode ? '自然对话中：直接说话，我听到停顿就回答' : '打字提问，或用自然对话模式直接开口' }}
+            </div>
           </div>
 
           <!-- 控制区 -->
           <div class="control-row">
-            <el-input v-model="question" placeholder="基于知识库提问，如：梯度下降的学习率怎么选？"
+            <el-input v-model="question" placeholder="基于知识库提问，可追问，如：梯度下降的学习率怎么选？"
               @keyup.enter="onAsk" :disabled="answering || voiceBusy" size="large" class="chat-input-box" />
             <el-button type="primary" size="large" :loading="answering" :disabled="voiceBusy" @click="onAsk" class="send-btn">
               <el-icon class="btn-ico"><Promotion /></el-icon>发送
             </el-button>
-            <el-button class="talk-btn" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
+            <el-button v-if="streamAvailable" class="stream-btn" size="large"
+              :type="streamMode ? 'success' : 'default'" :plain="streamMode"
+              :disabled="!voiceReady || answering || talking" @click="toggleStreamMode">
+              <el-icon class="btn-ico"><Microphone /></el-icon>{{ streamMode ? '结束对话' : '自然对话' }}
+            </el-button>
+            <el-button v-else class="talk-btn" size="large" :loading="voiceState === 'transcribing' || voiceState === 'thinking'"
               :disabled="!voiceReady || answering" @pointerdown="startTalk" @pointerup="stopTalk"
               @pointerleave="stopTalk" @pointercancel="stopTalk">
               <el-icon class="btn-ico"><Microphone /></el-icon>{{ talking ? '松开结束' : '按住说话' }}
             </el-button>
-            <el-button v-if="voiceState === 'playing' || voiceState === 'transcribing' || voiceState === 'thinking'"
-              class="stop-btn" type="danger" plain size="large" @click="interrupt">
+            <el-button v-if="playerBusy" class="stop-btn" type="danger" plain size="large" @click="interrupt">
               <el-icon class="btn-ico"><VideoPause /></el-icon>打断
             </el-button>
           </div>
           <div class="voice-row">
-            <span class="mic-hint">需允许麦克风权限；语音识别本地完成，录音不出本机</span>
+            <span class="mic-hint">
+              需允许麦克风权限；语音识别与端点检测均在本机完成，录音不出本机。
+              <template v-if="streamAvailable">「自然对话」由本地 VAD 自动断句，无需按键。</template>
+            </span>
           </div>
         </div>
       </el-card>
@@ -141,22 +168,44 @@
       </el-collapse>
     </el-card>
   </el-dialog>
+
+  <!-- 历史对话：会话列表 + 消息回放（带引用），选中即续接该会话上下文 -->
+  <el-drawer v-model="historyOpen" title="历史对话" size="440px" direction="rtl">
+    <div v-if="!sessions.length" class="drawer-empty">
+      <el-empty description="还没有对话记录" :image-size="70" />
+    </div>
+    <div v-for="s in sessions" :key="s.id" class="session-item"
+      :class="{ active: s.id === sessionId }" @click="resumeSession(s)">
+      <div class="session-main">
+        <div class="session-title">{{ s.title || '新对话' }}</div>
+        <div class="session-meta">{{ s.turns }} 轮 · {{ shortTime(s.updated_at) }}</div>
+      </div>
+      <el-button text size="small" type="danger" class="session-del"
+        @click.stop="removeSession(s)"><el-icon><Delete /></el-icon></el-button>
+    </div>
+  </el-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  ChatDotRound, Collection, Delete, Document, Microphone, Notebook, Picture,
-  Promotion, Tickets, UploadFilled, VideoPause,
+  ChatDotRound, Clock, Collection, Delete, Document, Microphone, Notebook, Picture,
+  Plus, Promotion, Tickets, UploadFilled, VideoPause,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   askStream, deleteKbDocument, listKbDocuments, loadChunkImage,
   uploadKbDocument, type KbCitation, type KbDocument,
 } from '@/api/kb'
-import { speakText, VoiceClient, type VoiceEvent } from '@/api/voice'
-import { decodeTo16k, PlaybackManager, toBase64, wavEncode } from '@/utils/audio'
+import {
+  deleteChatSession, listChatMessages, listChatSessions,
+  type ChatSessionInfo,
+} from '@/api/chat'
+import {
+  speakTextTimed, voiceCapabilities, VoiceClient, type VoiceEvent,
+} from '@/api/voice'
+import { decodeTo16k, PcmStreamer, PlaybackManager, toBase64, wavEncode } from '@/utils/audio'
 import Live2DAvatar from '@/components/live2d/Live2DAvatar.vue'
 
 /** 当前一轮的助教回答（字幕区只展示这一条；引用点开弹窗看原文） */
@@ -174,24 +223,38 @@ const currentA = ref<Answer | null>(null)   // 当前一轮的助教回答
 const citeDialog = ref(false)
 const images = ref<Record<string, string>>({})   // chunk_id → objectURL（接口需 Bearer，img 标签无法带头，故 fetch blob）
 
+// ---------- 多轮会话 ----------
+const sessionId = ref<number | null>(null)  // 服务端会话 id：多轮上下文与引用延续的凭据
+const turns = ref(0)                        // 已完成轮数（头部展示"第 N 轮"）
+const historyOpen = ref(false)
+const sessions = ref<ChatSessionInfo[]>([])
+
 // ---------- 数字人 ----------
 const muted = ref(false)
 const voiceReady = ref(false)
 const talking = ref(false)
-const voiceState = ref<'idle' | 'recording' | 'transcribing' | 'thinking' | 'playing'>('idle')
+const voiceState = ref<'idle' | 'recording' | 'transcribing' | 'thinking' | 'playing' | 'listening'>('idle')
+const streamAvailable = ref(false)          // 服务端流式语音（VAD + 流式 ASR）是否就绪
+const streamMode = ref(false)               // 自然对话开关
+const partial = ref('')                     // 流式识别中间结果（边说边上屏）
+const playing = ref(false)                  // 是否正在播报（用于显示打断与暂停送帧）
 const avatarRef = ref<InstanceType<typeof Live2DAvatar>>()
 const player = new PlaybackManager()
 const voice = new VoiceClient()
 let recorder: MediaRecorder | null = null
 let chunks: Blob[] = []
-let stream: MediaStream | null = null
+let micStream: MediaStream | null = null
 let talkTimer: number | undefined
+let streamer: PcmStreamer | null = null
 let voiceMsg: Answer | null = null   // 语音模式的当前回答对象
 
 const voiceBusy = computed(() => ['recording', 'transcribing', 'thinking'].includes(voiceState.value))
-const voiceStateText = computed(() => ({
-  idle: '待机中', recording: '正在聆听…', transcribing: '识别中…', thinking: '思考中…', playing: '播报中',
-} as const)[voiceState.value])
+const playerBusy = computed(() => playing.value || voiceState.value === 'transcribing' || voiceState.value === 'thinking')
+const displayStateText = computed(() => (playing.value ? '播报中' : ({
+  idle: streamMode.value ? '聆听中' : '待机中',
+  recording: '正在聆听…', transcribing: '识别中…', thinking: '思考中…',
+  playing: '播报中', listening: '聆听中',
+} as const)[voiceState.value]))
 
 const suggests = ['梯度下降的学习率怎么选？', '什么是反向传播？', '过拟合如何解决？']
 
@@ -217,6 +280,10 @@ function inkOf(name: string) {
   if (['xls', 'xlsx', 'csv'].includes(ext)) return '#16a34a'
   if (['png', 'jpg', 'jpeg', 'gif', 'bmp'].includes(ext)) return '#7c3aed'
   return '#5b5bd6'
+}
+function shortTime(iso: string) {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { hour12: false }).slice(5, 16)
 }
 
 async function loadDocs() {
@@ -270,6 +337,19 @@ function stripForSpeech(text: string): string {
   return text.split(/((?<=[。！？；])\s*|\n+)/).map(cleanOne).join('')
 }
 
+/** 统一播报：优先要口型时间轴（marks），拿不到就退回纯音频（音量驱动口型）。 */
+async function speak(text: string) {
+  if (muted.value || !text) return
+  const cleaned = stripForSpeech(text).slice(0, 2000)
+  if (!cleaned.trim()) return
+  if (player.isPlaying) player.stop()
+  const timed = await speakTextTimed(cleaned)
+  if (!timed) return
+  voiceState.value = 'playing'
+  playing.value = true
+  await player.enqueue(timed.blob, timed.marks)
+}
+
 async function onAsk() {
   const q = question.value.trim()
   if (!q || answering.value) return
@@ -279,6 +359,7 @@ async function onAsk() {
   player.ensureContext()
   question.value = ''
   currentQ.value = q
+  partial.value = ''
   const msg: Answer = { text: '' }
   currentA.value = msg
   answering.value = true
@@ -288,33 +369,51 @@ async function onAsk() {
         msg.citations = citations
         citations.filter((c) => c.kind === 'image').forEach((c) => { void loadImg(c.chunk_id) })
       },
-      (text) => { msg.text += text })
+      (text) => { msg.text += text },
+      {
+        sessionId: sessionId.value,
+        onSession: (id) => {
+          // 服务端首次落地的会话 id：写回状态并同步给 WS，语音/文字共用同一条会话
+          sessionId.value = id
+          voice.setSession(id)
+        },
+      })
     if (!msg.text) msg.text = '（无内容）'
+    turns.value += 1
   } catch (err: any) {
     msg.text = `生成失败：${err?.message || '未知错误'}`
     ElMessage.error(err?.message || '问答失败')
   } finally { answering.value = false }
-  if (!muted.value && msg.text && !msg.text.startsWith('生成失败') && msg.text !== '（无内容）') {
-    if (player.isPlaying) player.stop()
-    const blob = await speakText(stripForSpeech(msg.text).slice(0, 2000))
-    if (blob) {
-      voiceState.value = 'playing'
-      await player.enqueue(blob)
-    }
+  if (msg.text && !msg.text.startsWith('生成失败') && msg.text !== '（无内容）') {
+    await speak(msg.text)
   }
 }
 
 function onVoiceEvent(e: VoiceEvent) {
   if (e.type === 'status') {
-    if (e.state === 'ready' || e.state === 'cancelled') {
+    if (e.state === 'cancelled') {
+      voiceState.value = 'idle'
+      streamMode.value = false
+      stopStreamer()
+    } else if (e.state === 'ready') {
       voiceReady.value = true
-      if (e.state !== 'ready') voiceState.value = 'idle'
+      if (!streamMode.value) voiceState.value = 'idle'
+    } else if (e.state === 'listening') {
+      voiceReady.value = true
+      voiceState.value = 'listening'
     } else if (e.state === 'transcribing') voiceState.value = 'transcribing'
     else if (e.state === 'thinking') voiceState.value = 'thinking'
+  } else if (e.type === 'partial') {
+    partial.value = e.text
   } else if (e.type === 'transcript') {
+    partial.value = ''
     currentQ.value = e.text
     voiceMsg = { text: '' }
     currentA.value = voiceMsg
+  } else if (e.type === 'session') {
+    // 语音链路也会建/复用会话：与文字链路共享同一条，混用不丢上文
+    sessionId.value = e.id
+    turns.value = e.turns
   } else if (e.type === 'citations') {
     if (voiceMsg) {
       voiceMsg.citations = e.items
@@ -326,21 +425,25 @@ function onVoiceEvent(e: VoiceEvent) {
     const bytes = atob(e.data)
     const arr = new Uint8Array(bytes.length)
     for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
-    void player.enqueue(new Blob([arr], { type: 'audio/mpeg' }))
-  } else if (e.type === 'done') {
+    playing.value = true
+    void player.enqueue(new Blob([arr], { type: 'audio/mpeg' }), e.marks)
+  } else if (e.type === 'done' || e.type === 'segment_done') {
     if (voiceMsg && !voiceMsg.text) voiceMsg.text = '（无内容）'
     voiceMsg = null
     if (e.audio_total > 0) voiceState.value = 'playing'
-    else voiceState.value = 'idle'
+    else if (!streamMode.value) voiceState.value = 'idle'
+    if (e.type === 'segment_done') turns.value += 1
   } else if (e.type === 'error') {
     voiceMsg = null
-    voiceState.value = 'idle'
+    voiceState.value = streamMode.value ? 'listening' : 'idle'
     ElMessage.error(e.message)
   }
 }
 
 function onVoiceClose(reason: string) {
   voiceReady.value = false
+  streamMode.value = false
+  stopStreamer()
   if (reason !== 'closed') ElMessage.warning(reason)
 }
 
@@ -349,14 +452,9 @@ async function startTalk() {
   if (player.isPlaying) interrupt()
   // 按住说话也是手势：此处创建 AudioContext 使后续 WS 音频分片可出声（自动播放策略）
   player.ensureContext()
-  try {
-    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  } catch {
-    ElMessage.error('无法访问麦克风，请检查浏览器权限')
-    return
-  }
+  if (!(await ensureMic())) return
   chunks = []
-  recorder = new MediaRecorder(stream)
+  recorder = new MediaRecorder(micStream!)
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
   recorder.onstop = onRecordEnd
   recorder.start()
@@ -384,27 +482,114 @@ async function onRecordEnd() {
   }
 }
 
+// ---------- 自然对话（服务端 VAD 端点检测 + 流式转写） ----------
+async function ensureMic(): Promise<boolean> {
+  if (micStream) return true
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    return true
+  } catch {
+    ElMessage.error('无法访问麦克风，请检查浏览器权限')
+    return false
+  }
+}
+
+function stopStreamer() {
+  streamer?.stop()
+  streamer = null
+  partial.value = ''
+}
+
+async function toggleStreamMode() {
+  if (streamMode.value) {
+    streamMode.value = false
+    stopStreamer()
+    voice.streamEnd()
+    voiceState.value = 'idle'
+    return
+  }
+  player.ensureContext()
+  if (!(await ensureMic())) return
+  streamer = new PcmStreamer(micStream!)
+  streamer.onFrame = (pcm) => {
+    // 播报期间不送帧：扬声器声音会被麦克风收回，造成"她回答自己"（后端同样会丢弃，
+    // 前端先掐断是不浪费带宽与 CPU）
+    if (!playing.value && !answering.value) voice.streamChunk(pcm)
+  }
+  streamer.start()
+  voice.setSession(sessionId.value)
+  voice.streamStart()
+  streamMode.value = true
+  partial.value = ''
+}
+
 function interrupt() {
   player.stop()
-  voice.cancel()
-  voiceState.value = 'idle'
+  playing.value = false
+  // 自然对话：只掐掉本轮播报，监听继续（可以随时抢话）；按住说话：整轮取消
+  if (streamMode.value) voice.interrupt()
+  else { voice.cancel(); voiceState.value = 'idle' }
 }
 
 function onMute(v: string | number | boolean) {
   if (v) interrupt()  // 静音即打断当前播报
 }
 
+// ---------- 会话 ----------
+function newChat() {
+  sessionId.value = null
+  turns.value = 0
+  currentQ.value = ''
+  currentA.value = null
+  partial.value = ''
+  voice.setSession(null)
+  ElMessage.success('已开启新对话')
+}
+
+async function openHistory() {
+  sessions.value = await listChatSessions()
+  historyOpen.value = true
+}
+
+async function resumeSession(s: ChatSessionInfo) {
+  const detail = await listChatMessages(s.id)
+  const msgs = detail.messages
+  const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+  const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+  sessionId.value = s.id
+  voice.setSession(s.id)
+  turns.value = Math.max(0, msgs.filter((m) => m.role === 'user').length - (lastAssistant ? 0 : 1))
+  currentQ.value = lastUser?.content || ''
+  currentA.value = lastAssistant
+    ? { text: lastAssistant.content, citations: lastAssistant.citations }
+    : null
+  currentA.value?.citations?.filter((c) => c.kind === 'image')
+    .forEach((c) => { void loadImg(c.chunk_id) })
+  historyOpen.value = false
+  ElMessage.success('已续接该对话，可直接追问')
+}
+
+async function removeSession(s: ChatSessionInfo) {
+  await deleteChatSession(s.id)
+  if (sessionId.value === s.id) newChat()
+  sessions.value = await listChatSessions()
+}
+
 onMounted(() => {
-  player.onVolume = (v) => avatarRef.value?.setMouth(v)
-  player.onEnd = () => { voiceState.value = 'idle' }
+  player.onMouth = (v) => avatarRef.value?.setMouth(v)
+  player.onEnd = () => { playing.value = false; if (!streamMode.value) voiceState.value = 'idle' }
   voice.connect({ onEvent: onVoiceEvent, onClose: onVoiceClose })
   void loadDocs()
+  void voiceCapabilities()
+    .then((c) => { streamAvailable.value = c.stream })
+    .catch(() => { streamAvailable.value = false })
 })
 
 onBeforeUnmount(() => {
+  streamer?.stop()
   voice.close()
   player.stop()
-  stream?.getTracks().forEach((t) => t.stop())
+  micStream?.getTracks().forEach((t) => t.stop())
 })
 </script>
 
@@ -418,6 +603,8 @@ onBeforeUnmount(() => {
 .head-icon { margin-right: 7px; color: var(--accent); vertical-align: -2px; }
 .btn-ico { margin-right: 5px; }
 .head-side { display: flex; align-items: center; gap: 10px; }
+.head-btn { padding: 0 6px; }
+.turn-tag { font-variant-numeric: tabular-nums; }
 .voice-state { font-size: 12.5px; color: var(--text-3); }
 
 /* ---------- 知识库 ---------- */
@@ -495,10 +682,12 @@ onBeforeUnmount(() => {
   border: 9px solid transparent; border-bottom-color: #fff;
 }
 .bubble-q { font-size: 12px; color: var(--text-3); word-break: break-word; }
+.live-tag { margin-right: 6px; }
 .bubble-a {
   font-size: 13.5px; line-height: 1.7; color: var(--text-1);
   white-space: pre-wrap; word-break: break-word;
 }
+.bubble-hint { font-size: 12.5px; color: var(--text-3); }
 .bubble-cites { display: flex; flex-wrap: wrap; gap: 2px 6px; }
 .cite-chip { font-size: 12px; color: var(--accent); padding: 0 6px; height: 24px; }
 
@@ -516,6 +705,7 @@ onBeforeUnmount(() => {
 }
 .welcome-title { font-size: 15px; font-weight: 700; }
 .welcome-sub { font-size: 12.5px; color: var(--text-3); }
+.resume-hint { color: var(--accent); }
 .suggest-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 2px; }
 .suggest-chip {
   font-size: 12.5px;
@@ -548,6 +738,7 @@ onBeforeUnmount(() => {
 .chat-input-box :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px var(--border) inset; }
 .send-btn { letter-spacing: 2px; min-width: 96px; }
 .talk-btn { min-width: 132px; }
+.stream-btn { min-width: 132px; }
 .stop-btn { min-width: 96px; }
 .voice-row { margin-top: 8px; }
 .mic-hint { font-size: 12px; color: var(--text-3); }
@@ -565,4 +756,26 @@ onBeforeUnmount(() => {
 .cite-collapse :deep(.el-collapse-item__header) { font-size: 12px; color: var(--text-3); height: 32px; border: none; }
 .cite-collapse :deep(.el-collapse-item__wrap) { border: none; }
 .cite-excerpt { font-size: 12px; color: var(--text-2); line-height: 1.7; white-space: pre-wrap; }
+
+/* 历史对话抽屉 */
+.drawer-empty { padding-top: 24px; }
+.session-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--surface);
+}
+.session-item:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.session-item.active { border-color: var(--accent); background: #f4f4ff; }
+.session-main { flex: 1; min-width: 0; }
+.session-title {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.session-meta { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.session-del { flex: none; }
 </style>

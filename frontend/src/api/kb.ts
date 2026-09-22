@@ -26,17 +26,19 @@ export const deleteKbDocument = (id: number) => http.delete(`/kb/documents/${id}
 export const loadChunkImage = (chunkId: string) =>
   http.get(`/kb/chunks/${chunkId}/image`, { responseType: 'blob' }) as Promise<Blob>
 
-/** 流式问答：axios 不支持流式，用 fetch 手动解析 SSE（citations → delta* → done / error）。 */
+/** 流式问答：axios 不支持流式，用 fetch 手动解析 SSE。
+ *  事件序 session → citations → delta* → done / error；传 sessionId 即多轮续接。 */
 export async function askStream(
   question: string,
   onCitations: (citations: KbCitation[]) => void,
   onDelta: (text: string) => void,
+  opts: { sessionId?: number | null; onSession?: (id: number, turns: number) => void } = {},
 ): Promise<void> {
   const auth = useAuthStore()
   const resp = await fetch('/api/kb/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, session_id: opts.sessionId ?? null }),
   })
   if (!resp.ok || !resp.body) {
     const err = await resp.json().catch(() => null)
@@ -60,7 +62,10 @@ export async function askStream(
         else if (line.startsWith('data: ')) data += line.slice(6)
       }
       if (!event) continue
-      if (event === 'citations') onCitations(JSON.parse(data))
+      if (event === 'session') {
+        const info = JSON.parse(data)
+        opts.onSession?.(info.id, info.turns)
+      } else if (event === 'citations') onCitations(JSON.parse(data))
       else if (event === 'delta') onDelta(JSON.parse(data).text)
       else if (event === 'error') throw new Error(JSON.parse(data).message || '生成失败')
     }

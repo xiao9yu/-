@@ -44,7 +44,7 @@ V1 范围说明：导出以"生成时的结构化数据"为准；编辑器 HTML 
 - **混合检索重排**：提问后私有库+公共库各取向量 top-k 与 BM25 top-k → RRF 融合 → bge-reranker-v2-m3 精排（加载失败自动降级跳过精排）。
 - **流式问答**：DeepSeek 流式生成（SSE），回答附引用溯源卡片（文件名+页码+原文摘录；图片块直显原图、表格块展示结构化文本）。
 - **模型**：bge-m3（向量化）+ bge-reranker-v2-m3（精排），首次运行需联网下载（约 3GB），可设 `HF_ENDPOINT=https://hf-mirror.com` 加速；已有缓存可设 `HF_HUB_OFFLINE=1` 离线加载。
-- **V1 范围说明**：问答为单轮（不保存会话历史）；.doc/.ppt/.xls 二进制老格式请先转换为 docx/pptx/xlsx 再上传；公式暂以文本/图片 OCR 兜底识别。
+- **V1 范围说明**：.doc/.ppt/.xls 二进制老格式请先转换为 docx/pptx/xlsx 再上传；公式暂以文本/图片 OCR 兜底识别。（多轮会话已于 2026-09-22 补齐，见下方「数字人互动」）
 
 ## 个性化学习（工单 19）
 
@@ -64,6 +64,26 @@ V1 范围说明：导出以"生成时的结构化数据"为准；编辑器 HTML 
 cd backend && pytest          # 单元测试（不含 smoke）
 cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-m3 等模型）
 ```
+
+当前基线：**221 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
+
+> **跑测注意（实测踩坑，两条）**
+>
+> 1. **不要传 `--basetemp`**。指定自定义临时目录后，全量运行时会出现大批夹具级假失败（实测同一份代码：默认目录 221 全绿，自定义目录先后出现 6 failed / 5 failed+1 error / 72 passed+149 errors 三种结果）。保持默认临时目录即可。
+> 2. **本机环境下退出码不可信**。若本机的批量删除防护拦截了 pytest 收尾时的临时目录清理，进程会在所有用例跑完后被中止，导致 `-q` 的汇总行丢失、退出码为 1。**判读结果请看逐用例输出**，例如：
+>    `pytest -v > out.txt 2>&1`，再数 `grep -c PASSED out.txt` / `grep -c FAILED out.txt`。
+
+### 已知限制：FAISS 与含中文的路径
+
+FAISS 的 C++ 写盘接口（`FileIOWriter`）用窄字符 `fopen` 打开文件，**Windows 下无法写入路径中含非 ASCII 字符的索引文件**。实测：
+
+| 写入路径 | 结果 |
+|---|---|
+| `C:/.../项目/数字人/.../faiss`（含中文绝对路径） | `RuntimeError: ... could not open ...` |
+| `C:/Users/.../Temp/probe/faiss`（纯 ASCII 绝对路径） | 正常 |
+| `./data/faiss`（相对路径，项目当前用法） | 正常 |
+
+项目当前通过 `settings` 中的**相对路径** `./data/faiss` 规避（相对路径字符串里没有中文字符，C++ 层只看到相对串）。**若把 `data_dir` 改成含中文的绝对路径，`upsert` 会直接抛 `RuntimeError`。** 稳妥修法是改用 `faiss.serialize_index` / `deserialize_index` + Python 层 `read_bytes`/`write_bytes`（Python 的 IO 正确处理 Unicode 路径），但会变更磁盘格式，需兼容旧索引文件，故暂未实施。
 
 ## 工单对照
 
@@ -85,9 +105,21 @@ docs/ 工单文档与设计/计划
 
 ## 数字人互动（智能助教内嵌）
 
-- 语音问答：助教页按住说话 → FunASR 本地转写（paraformer-zh，录音不出本机）→ 知识库 RAG → edge-tts 分句朗读，Live2D 形象音量驱动口型；播报中可一键打断
+- **多轮会话**：问答按会话落库（`chat_sessions` / `chat_messages`），最近 3 轮上下文进提示词，数字人能接指代型追问
+  （"那它设大了会怎样"）；检索 query 自动拼接上一轮问题，避免追问检索空手；引用随轮次落库，历史回放不丢溯源。
+  头部显示「第 N 轮」、可开`历史对话`抽屉续接、可`新对话`重开。
+- **自然对话（流式）**：点`自然对话`后持续送 16k PCM，**服务端 FSMN-VAD 自动断句**（`fsmn-vad`）+
+  `paraformer-zh-streaming` 增量转写（边说边上屏），判定停顿即回答；`打断`只掐本轮播报，监听继续（可抢话）。
+  流式模型不可用时该入口自动隐藏，退回按住说话。
+- **语音问答**：按住说话 → FunASR 本地转写（`paraformer-zh`，录音不出本机）→ 知识库 RAG → edge-tts 分句朗读
+- **口型时间轴**：edge-tts `WordBoundary` 词级时间戳 → 音节级张合包络（标点处闭嘴），与实时音量相乘驱动
+  Live2D `ParamMouthOpenY`；拿不到时间轴时自动退回纯音量驱动。**当前是音节级对齐 + 启发式幅度，非音素级视面（viseme）**。
 - 打字朗读：文字问答的回答默认朗读，右上角开关可静音
-- 依赖：`pip install -r requirements.txt`（funasr/kaldi-native-fbank/edge-tts）；FunASR 模型首次使用自动下载（约 1GB，modelscope），或先跑 `python scripts/download_funasr_model.py` 预热；edge-tts 需联网（失败自动降级为纯文字）
+- 依赖：`pip install -r requirements.txt`（funasr/kaldi-native-fbank/edge-tts）；FunASR 模型首次使用自动下载
+  （约 2GB：批量 paraformer + 流式 paraformer + FSMN-VAD，modelscope），或先跑 `python scripts/download_funasr_model.py` 预热；
+  edge-tts 需联网（失败自动降级为纯文字）
 - 浏览器：建议 Chrome/Edge；首次按住说话时授权麦克风
 - 形象版权：Hiyori 为 Live2D 官方样例模型（Live2D Free Material License，可商用演示，保留本声明）
+
+设计与能力边界见 `docs/superpowers/specs/2026-09-22-digital-human-conversation-design.md`。
 

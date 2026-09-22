@@ -24,7 +24,7 @@ from ..services.parser.chunk import Chunk
 from ..services.rag import KBCollection, hybrid_retrieve
 from ..services.rag_ask import _select_hits, build_answer_prompt
 from ..services.vector_store import VectorStore, get_vector_store
-from . import learn_profile
+from . import chat_service, learn_profile
 
 PUBLIC_COLLECTION = "kb_public"
 
@@ -141,18 +141,28 @@ def delete_document(doc_id: int, user: User, upload_dir, db: Session,
 
 
 def answer_events(question: str, user: User, db: Session, *,
-                  vector_store=None, embedder=None, reranker=None, gateway=None) -> Iterator[tuple[str, Any]]:
+                  vector_store=None, embedder=None, reranker=None, gateway=None,
+                  session=None) -> Iterator[tuple[str, Any]]:
     """问答事件流（(事件名, 数据) 元组）：citations → delta* → done；失败发 error。
 
     ask_stream 的 SSE 字符串仅是它的薄包装；WS 语音链路（api/voice.py）直接消费本生成器。
+
+    session（ChatSession）非空即多轮模式：
+      · 取该会话最近 N 轮上下文喂进提示词（LLM 能理解"它/这个"这类指代）；
+      · 检索前用 rewrite_query 把指代型追问与前一轮问题拼接，避免检索必然空手；
+      · 流结束后把本轮问答 + 引用落库，引用可随历史回放（"引用延续"）。
+    不传 session 则等价于原单轮行为（既有单轮调用与测试契约不变）。
     """
+    answer = ""
     try:
         # 经本模块 get_embedder/get_vector_store 显式解析后传入 hybrid_retrieve：
         # 避免 rag 模块内部各自取真实单例——否则本模块的 monkeypatch 对检索路径是死的，
         # 测试会静默打真实 FAISS 单例（维度冲突 → faiss AssertionError，见 Plan C Task 6 Minor #1）
         emb = embedder or get_embedder()
         vs = vector_store or get_vector_store()
-        hits = hybrid_retrieve(question, _load_collections(user, db), top_k=5,
+        history = chat_service.recent_history(db, session) if session is not None else []
+        retrieval_q = chat_service.rewrite_query(question, history)
+        hits = hybrid_retrieve(retrieval_q, _load_collections(user, db), top_k=5,
                                vector_store=vs, embedder=emb, rerank=reranker)
         selected = _select_hits(hits, 4000)
         citations = [
@@ -170,7 +180,8 @@ def answer_events(question: str, user: User, db: Session, *,
         ]
         yield ("citations", citations)
         gw = gateway or get_gateway()
-        for piece in gw.chat_stream(build_answer_prompt(question, hits)):
+        for piece in gw.chat_stream(build_answer_prompt(question, hits, history=history)):
+            answer += piece
             yield ("delta", {"text": piece})
         # 工单19 画像迭代联动：学生提问命中知识点 → 记低权重事件（失败不影响问答流）
         if user.role == Role.student:
@@ -178,6 +189,12 @@ def answer_events(question: str, user: User, db: Session, *,
                 learn_profile.record_ask_events(user, question, db)
             except Exception:
                 logger.exception("画像事件记录失败（问答不受影响）")
+        if session is not None and answer.strip():
+            try:
+                chat_service.append_turn(db, session, question, answer, citations)
+            except Exception:
+                # 落库失败不回退已生成内容：本轮照常播报，仅丢失历史（下次提问少一轮上下文）
+                logger.exception("会话落库失败（本轮问答不受影响）")
         yield ("done", {})
     except EmbedderError as exc:
         yield ("error", {"message": str(exc)})
@@ -192,7 +209,8 @@ def answer_events(question: str, user: User, db: Session, *,
 
 
 def ask_stream(question: str, user: User, db: Session, *,
-               vector_store=None, embedder=None, reranker=None, gateway=None) -> Iterator[str]:
+               vector_store=None, embedder=None, reranker=None, gateway=None,
+               session=None) -> Iterator[str]:
     """流式问答（SSE 生成器）：answer_events 的 SSE 字符串包装（既有前端/测试契约不变）。"""
 
     def sse(event: str, data) -> str:
@@ -200,7 +218,8 @@ def ask_stream(question: str, user: User, db: Session, *,
 
     for event, data in answer_events(question, user, db,
                                      vector_store=vector_store, embedder=embedder,
-                                     reranker=reranker, gateway=gateway):
+                                     reranker=reranker, gateway=gateway,
+                                     session=session):
         yield sse(event, data)
 
 

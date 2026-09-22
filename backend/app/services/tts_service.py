@@ -19,6 +19,7 @@ _MAX_SENT = 120      # 单句超长按逗号再切
 _CACHE_MAX = 50
 
 _cache: OrderedDict[str, bytes] = OrderedDict()
+_timed_cache: OrderedDict[str, tuple[bytes, list[dict]]] = OrderedDict()
 _lock = threading.Lock()
 
 
@@ -29,6 +30,9 @@ class TTSUnavailableError(Exception):
 _CITE_RE = re.compile(r"[\[【]\s*\d+(?:\s*[,，、]\s*\d+)*\s*[\]】]")
 _REF_PREFIX_RE = re.compile(r"^\s*(?:参考答案|参考思路|回答思路|答案)(?:\s*[一二三四五六七八九十\d]+)?\s*[:：]\s*")
 _MD_RE = re.compile(r"[*#`]+")
+
+# edge-tts 时间戳单位：100ns（1e7 tick = 1s）
+_TICKS_PER_SEC = 10_000_000
 
 
 def spoken_text(text: str) -> str:
@@ -62,14 +66,28 @@ def split_sentences(text: str) -> list[str]:
     return parts
 
 
+def _key(text: str, voice: str) -> str:
+    return hashlib.md5(f"{voice}\x00{text}".encode("utf-8")).hexdigest()
+
+
+def _run_sync(coro_factory):
+    """在同步上下文中跑协程：已处于运行中的事件循环时（WS 线程复用 loop）借线程另起 loop。"""
+    import asyncio
+    try:
+        return asyncio.run(coro_factory())
+    except RuntimeError:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro_factory()).result()
+
+
 def _communicate(text: str, voice: str) -> bytes:
-    """单次合成（测试 monkeypatch 的 seam；真实 edge_tts 仅在此懒导入）。
+    """单次合成（打字朗读路径的测试 seam；真实 edge_tts 仅在此懒导入）。
 
     edge-tts 7.x 的 save_sync(audio_fname) 必传文件名且写盘、不返回字节（旧版
     无参调用返回字节，本项目曾按旧版 API 调用 → 运行时 TypeError 被吞成 502）；
     改用 stream() 流式收集 audio 分片，6.x/7.x 版本行为一致。
     """
-    import asyncio
     import edge_tts
 
     async def _collect() -> bytes:
@@ -82,17 +100,43 @@ def _communicate(text: str, voice: str) -> bytes:
             raise ValueError("edge-tts 返回空音频")
         return bytes(buf)
 
-    try:
-        return asyncio.run(_collect())
-    except RuntimeError:
-        # 在运行中的事件循环上被调用时，asyncio.run 会抛 RuntimeError：借线程另起 loop
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, _collect()).result()
+    return _run_sync(_collect)
 
 
-def _key(text: str, voice: str) -> str:
-    return hashlib.md5(f"{voice}\x00{text}".encode("utf-8")).hexdigest()
+def _communicate_timed(text: str, voice: str) -> tuple[bytes, list[dict]]:
+    """单次合成 + 词/字级时间边界（口型对齐路径的测试 seam）。
+
+    请求 boundary="WordBoundary" 后 stream() 会额外下发 WordBoundary 分片，
+    offset/duration 为 100ns 单位；中文按词切分，可当"音节级时间轴"用。
+    流里没有 WordBoundary（服务端不返回该类型）时返回空列表，前端自动退回音量驱动。
+    """
+    import edge_tts
+
+    async def _collect() -> tuple[bytes, list[dict]]:
+        com = edge_tts.Communicate(text, voice, pitch=settings.tts_pitch,
+                                   boundary="WordBoundary")
+        buf = bytearray()
+        marks: list[dict] = []
+        async for chunk in com.stream():
+            kind = chunk["type"]
+            if kind == "audio":
+                buf.extend(chunk["data"])
+            elif kind == "WordBoundary":
+                off = int(chunk.get("offset") or 0)
+                dur = int(chunk.get("duration") or 0)
+                word = str(chunk.get("text") or "")
+                if not word:
+                    continue
+                marks.append({
+                    "text": word,
+                    "t0": round(off / _TICKS_PER_SEC, 4),
+                    "t1": round((off + dur) / _TICKS_PER_SEC, 4),
+                })
+        if not buf:
+            raise ValueError("edge-tts 返回空音频")
+        return bytes(buf), marks
+
+    return _run_sync(_collect)
 
 
 def synthesize(text: str, voice: str | None = None) -> bytes:
@@ -115,6 +159,32 @@ def synthesize(text: str, voice: str | None = None) -> bytes:
         while len(_cache) > _CACHE_MAX:
             _cache.popitem(last=False)
     return data
+
+
+def synthesize_timed(text: str, voice: str | None = None) -> tuple[bytes, list[dict]]:
+    """整段合成 mp3 + 词/字级时间边界（数字人口型对齐）。
+
+    与 synthesize 同一缓存键但存 (bytes, marks)：口型路径需要时间轴，文字朗读不需要；
+    边界为空（服务端不下发 WordBoundary）时音频照常返回，前端退回纯音量驱动。
+    """
+    v = voice or settings.tts_voice
+    k = _key(text, v)
+    with _lock:
+        if k in _timed_cache:
+            return _timed_cache[k]
+    try:
+        data, marks = _communicate_timed(text, v)
+    except Exception:
+        try:
+            data, marks = _communicate_timed(text, v)
+        except Exception as exc:
+            raise TTSUnavailableError("语音合成服务不可用") from exc
+    with _lock:
+        _timed_cache[k] = (data, marks)
+        _timed_cache.move_to_end(k)
+        while len(_timed_cache) > _CACHE_MAX:
+            _timed_cache.popitem(last=False)
+    return data, marks
 
 
 def synthesize_sentences(text: str, voice: str | None = None):
