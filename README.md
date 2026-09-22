@@ -14,6 +14,9 @@ python -m scripts.seed_demo_data   # 预置账号、演示数据与备课课程�
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
+> **JWT 密钥（SECRET_KEY）**：`.env` 未配置时不使用任何默认密钥——dev 环境自动生成随机密钥并保存到 `backend/.secret_key`（已 gitignore，重启复用，已签发 token 不失效）；`APP_ENV=prod` 且未配置则**拒绝启动**。
+> 注意：首次启动后密钥即固定，若清掉 `.secret_key`，此前签发的 token 全部失效（需重新登录）。
+
 ### 前端（端口 5173）
 
 ```

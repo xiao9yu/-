@@ -1,4 +1,7 @@
 backend/.env
+# 未配置 SECRET_KEY 时自动生成的本地 JWT 密钥（每机一份，不入库）
+.secret_key
+backend/.secret_key
 backend/uploads/
 backend/data/
 # 本地运行期产生的 SQLite 数据库（含会话/消息），不入库

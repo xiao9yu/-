@@ -148,3 +148,42 @@ def test_rewrite_query_uses_latest_user_turn():
     hist = _hist(("第一问", "答一"), ("第二问", "答二"))
     out = chat_service.rewrite_query("那为什么", hist)
     assert out.startswith("第二问")
+
+
+@pytest.mark.parametrize("q", [
+    "为什么Transformer要使用多头注意力机制",
+    "那我该怎么理解反向传播",
+    "继续讲讲批量归一化的作用",
+    "这个模型在长文本上表现如何",
+])
+def test_rewrite_query_keeps_long_new_topic(q):
+    """长句自含主题时不得改写。
+
+    回归防线：早期实现把「为什么/那我/继续/这个」当作长句改写信号，实测这 4 条
+    全新问句被 100% 混入上文（如"什么是梯度下降 继续讲讲批量归一化的作用"），
+    检索 query 被上一话题污染。
+    """
+    hist = _hist(("什么是梯度下降", "一种优化算法。"))
+    assert chat_service.rewrite_query(q, hist) == q
+
+
+def test_rewrite_query_keeps_short_but_self_contained():
+    """短句若自含主题（含实义名词、无承接标记）同样不改写。"""
+    hist = _hist(("什么是反向传播", "链式法则。"))
+    assert chat_service.rewrite_query("什么是梯度下降", hist) == "什么是梯度下降"
+
+
+@pytest.mark.parametrize("q", [
+    "那学习率呢",        # 短句 + 弱标记
+    "继续",              # 极短句，无标记
+    "还有呢",            # 极短句
+    "举个例子",          # 承接语
+    "这个怎么理解",      # 短句 + 弱标记
+    "那它设大了会怎样",  # 强指代
+    "上述结论成立吗",    # 强指代
+])
+def test_rewrite_query_merges_followups(q):
+    hist = _hist(("梯度下降的学习率怎么选", "按经验取 0.01。"))
+    out = chat_service.rewrite_query(q, hist)
+    assert out.startswith("梯度下降的学习率怎么选")
+    assert q in out
