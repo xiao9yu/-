@@ -124,21 +124,56 @@ class LLMGateway:
                 return None
         return None
 
-    def chat_stream(self, messages: list[dict], temperature: float = 0.7) -> Iterator[str]:
-        """流式输出，逐段 yield 文本。"""
+    def chat_stream(self, messages: list[dict], temperature: float = 0.7, *,
+                    first_token_timeout: float | None = None,
+                    overall_timeout: float | None = None,
+                    silence_timeout: float | None = None) -> Iterator[str]:
+        """流式输出，逐段 yield 文本。
+
+        三段超时保护（评测 §5.5，实测曾出现单题 103s 极端抖动、生成段 ~82s）：
+          · 首字超时：第一个内容块迟迟不来 → 报错（上游异常/连接失败）；
+          · 整体超时：生成总时长越限 → 报错（防长回答无限拖拽）；
+          · 静默超时：两内容块间隔越限 → 报错（防中途卡死）。
+        超时按 LLMError 抛出，answer_events 按协议转 error 事件（SSE/语音链路共用），
+        用户看到"请稍后重试"而非无限等待。静默阈值同时收紧 SDK 读超时，
+        连接卡死不必等 60s 默认值才被发现。
+        """
+        if first_token_timeout is None:
+            first_token_timeout = settings.llm_first_token_timeout
+        if overall_timeout is None:
+            overall_timeout = settings.llm_overall_timeout
+        if silence_timeout is None:
+            silence_timeout = settings.llm_silence_timeout
         self._check_key()
+        start = time.monotonic()
+        last_token_at: float | None = None
+        create_kwargs: dict = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if silence_timeout > 0:
+            create_kwargs["timeout"] = httpx.Timeout(timeout=self.client.timeout, read=silence_timeout)
         try:
-            stream = self.client.chat.completions.create(
-                model=settings.deepseek_model,
-                messages=messages,
-                temperature=temperature,
-                stream=True,
-            )
+            stream = self.client.chat.completions.create(**create_kwargs)
             for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                if not (chunk.choices and chunk.choices[0].delta.content):
+                    continue
+                now = time.monotonic()
+                if last_token_at is None:
+                    if now - start > first_token_timeout:
+                        raise LLMError(f"大模型响应超时（首字超时 {first_token_timeout:g}s），请稍后重试")
+                elif now - last_token_at > silence_timeout:
+                    raise LLMError(f"大模型响应超时（静默超时 {silence_timeout:g}s），请稍后重试")
+                if now - start > overall_timeout:
+                    raise LLMError(f"大模型响应超时（整体超时 {overall_timeout:g}s），请稍后重试")
+                last_token_at = now
+                yield chunk.choices[0].delta.content
         except LLMError:
             raise
+        except APITimeoutError as exc:
+            raise LLMError("大模型响应超时，请稍后重试") from exc
         except Exception as exc:
             raise LLMError(f"大模型调用失败：{exc}") from exc
 

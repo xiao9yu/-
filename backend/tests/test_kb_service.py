@@ -277,3 +277,39 @@ def test_answer_events_yields_event_tuples(tmp_path, db, monkeypatch):
     assert names[0] == "citations"
     assert ("delta", {"text": "片段一"}) in events
     assert events[-1] == ("done", {})
+
+
+def test_strip_invalid_refs_keeps_valid_and_removes_out_of_range():
+    """引用编号清洗：范围内编号保留，[0] 与越界编号剔除并报出。"""
+    cleaned, bad = kb_service._strip_invalid_refs("依据[1]和[2]；另见[7]与[0]。", max_ref=2)
+    assert cleaned == "依据[1]和[2]；另见与。"
+    assert bad == [7, 0]
+
+
+def test_clean_ref_stream_handles_refs_split_across_chunks():
+    """跨 chunk 拆开的编号（[1 + 2]）拼回后按完整编号判定：[12] 越界剔除而非漏网。"""
+    out = list(kb_service._clean_ref_stream(iter(["参见[1", "2]以及[99]和[3]"]), max_ref=5))
+    assert "".join(out) == "参见以及和[3]"
+
+
+def test_answer_events_strips_out_of_range_refs_from_deltas(tmp_path, db, monkeypatch, caplog):
+    """评测 §5.4：回答中越界引用编号应在 delta 流中剔除并记 warning（前端不显示悬空引用）。"""
+    import logging
+
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: _FakeStore(tmp_path))
+    pdf = tmp_path / "demo.pdf"
+    _sample_pdf(pdf)
+    add_document(_upload_pdf(pdf), "public", _admin(), tmp_path, db)
+
+    class FakeGateway:
+        def chat_stream(self, messages, temperature=0.7):
+            yield "依据[1]，"
+            yield "另见[999]"
+
+    monkeypatch.setattr(kb_service, "get_gateway", lambda: FakeGateway())
+    with caplog.at_level(logging.WARNING, logger="kb_service"):
+        events = list(kb_service.answer_events("梯度下降", _student(), db))
+    deltas = "".join(d["text"] for e, d in events if e == "delta")
+    assert deltas == "依据[1]，另见"
+    assert any("引用编号越界" in r.message for r in caplog.records)

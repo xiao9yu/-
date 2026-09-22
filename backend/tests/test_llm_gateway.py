@@ -116,3 +116,107 @@ def test_nonretryable_error_wrapped_as_llmerror(monkeypatch):
     with pytest.raises(LLMError, match="大模型调用失败"):
         gw.chat([{"role": "user", "content": "hi"}])
     assert len(calls) == 1
+
+
+# ---------- 流式三段超时保护（评测 §5.5） ----------
+
+def _fake_chunks(contents):
+    class Delta:
+        def __init__(self, content): self.content = content
+
+    class Choice:
+        def __init__(self, content): self.delta = Delta(content)
+
+    class Chunk:
+        def __init__(self, content): self.choices = [Choice(content)]
+
+    return [Chunk(c) for c in contents]
+
+
+class _TimedStream:
+    """按预设间隔推进假时钟后再吐出下一块，模拟块间真实等待。"""
+
+    def __init__(self, chunks, gaps, clock):
+        self.chunks = chunks
+        self.gaps = gaps
+        self.clock = clock
+
+    def __iter__(self):
+        for chunk, gap in zip(self.chunks, self.gaps):
+            self.clock["t"] += gap
+            yield chunk
+
+
+def _stream_gw(monkeypatch, chunks, gaps):
+    import app.services.llm_gateway as lg
+
+    gw = LLMGateway(api_key="sk-test", base_url="https://api.test")
+    clock = {"t": 0.0}
+    monkeypatch.setattr(lg.time, "monotonic", lambda: clock["t"])
+    stream = _TimedStream(chunks, gaps, clock)
+    monkeypatch.setattr(gw.client.chat.completions, "create", lambda **kw: stream)
+    return gw
+
+
+def test_chat_stream_first_token_timeout_raises(monkeypatch):
+    """首个内容块超过首字阈值才到达 → LLMError 指明首字超时。"""
+    gw = _stream_gw(monkeypatch, _fake_chunks(["你", "好"]), gaps=[31, 1])
+    with pytest.raises(LLMError, match="首字超时"):
+        list(gw.chat_stream([{"role": "user", "content": "hi"}], first_token_timeout=30.0))
+
+
+def test_chat_stream_overall_timeout_stops_stream(monkeypatch):
+    """总时长越限 → 已吐出的块保留、随后报整体超时。"""
+    gw = _stream_gw(monkeypatch, _fake_chunks(["a", "b", "c", "d"]), gaps=[10, 10, 10, 10])
+    pieces = []
+    with pytest.raises(LLMError, match="整体超时"):
+        for p in gw.chat_stream([{"role": "user", "content": "hi"}], overall_timeout=30.0):
+            pieces.append(p)
+    assert pieces == ["a", "b", "c"]
+
+
+def test_chat_stream_silence_timeout_raises(monkeypatch):
+    """两内容块间隔超过静默阈值 → LLMError 指明静默超时。"""
+    gw = _stream_gw(monkeypatch, _fake_chunks(["a", "b"]), gaps=[5, 30])
+    with pytest.raises(LLMError, match="静默超时"):
+        list(gw.chat_stream([{"role": "user", "content": "hi"}], silence_timeout=20.0))
+
+
+def test_chat_stream_within_limits_yields_all(monkeypatch):
+    """各段耗时都在阈值内 → 全部正常吐出。"""
+    gw = _stream_gw(monkeypatch, _fake_chunks(["你", "好", "呀"]), gaps=[1, 1, 1])
+    out = list(gw.chat_stream([{"role": "user", "content": "hi"}],
+                              first_token_timeout=10.0, overall_timeout=10.0, silence_timeout=5.0))
+    assert out == ["你", "好", "呀"]
+
+
+def test_chat_stream_sets_sdk_read_timeout_from_silence(monkeypatch):
+    """静默阈值同步收紧 SDK 读超时：卡死的连接不必等 60s 默认值。"""
+    gw = LLMGateway(api_key="sk-test", base_url="https://api.test")
+    captured = {}
+
+    def create(**kw):
+        captured.update(kw)
+        return _TimedStream([], [], {"t": 0.0})
+
+    monkeypatch.setattr(gw.client.chat.completions, "create", create)
+    list(gw.chat_stream([{"role": "user", "content": "hi"}], silence_timeout=7.0))
+    assert captured["timeout"].read == 7.0
+
+
+def test_chat_stream_sdk_read_timeout_wrapped_as_llmerror(monkeypatch):
+    """SDK 读超时（连接静默卡死）→ 包成 LLMError 且信息指明超时。"""
+    from openai import APITimeoutError
+
+    class FakeTimeout(APITimeoutError):
+        def __init__(self): pass
+
+    class TimeoutStream:
+        def __iter__(self):
+            yield _fake_chunks(["部分"])[0]
+            raise FakeTimeout()
+
+    gw = LLMGateway(api_key="sk-test", base_url="https://api.test")
+    monkeypatch.setattr(gw.client.chat.completions, "create", lambda **kw: TimeoutStream())
+    with pytest.raises(LLMError, match="超时"):
+        list(gw.chat_stream([{"role": "user", "content": "hi"}]))

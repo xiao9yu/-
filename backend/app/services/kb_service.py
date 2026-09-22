@@ -6,6 +6,7 @@
 """
 import json
 import logging
+import re
 from typing import Any, Iterator
 
 from fastapi import UploadFile
@@ -180,7 +181,9 @@ def answer_events(question: str, user: User, db: Session, *,
         ]
         yield ("citations", citations)
         gw = gateway or get_gateway()
-        for piece in gw.chat_stream(build_answer_prompt(question, hits, history=history)):
+        for piece in _clean_ref_stream(
+                gw.chat_stream(build_answer_prompt(question, hits, history=history)),
+                len(citations)):
             answer += piece
             yield ("delta", {"text": piece})
         # 工单19 画像迭代联动：学生提问命中知识点 → 记低权重事件（失败不影响问答流）
@@ -221,6 +224,55 @@ def ask_stream(question: str, user: User, db: Session, *,
                                      reranker=reranker, gateway=gateway,
                                      session=session):
         yield sse(event, data)
+
+
+_REF_RE = re.compile(r"\[(\d+)\]")
+
+
+def _strip_invalid_refs(text: str, max_ref: int) -> tuple[str, list[int]]:
+    """剔除回答中的越界引用编号（[0] 或超过引用总数），返回清洗后文本与被剔除的编号。
+
+    评测 §5.4：模型若写出越界编号（如只给 5 条引用却标 [7]），前端会展示指向不存在
+    资料的溯源链接且无任何环节能发现。范围内编号原样保留（前端依赖它做引用高亮）。
+    """
+    bad: list[int] = []
+
+    def repl(m: re.Match) -> str:
+        n = int(m.group(1))
+        if 1 <= n <= max_ref:
+            return m.group(0)
+        bad.append(n)
+        return ""
+
+    return _REF_RE.sub(repl, text), bad
+
+
+def _clean_ref_stream(pieces: Iterator[str], max_ref: int) -> Iterator[str]:
+    """流式引用编号清洗：跨 chunk 边界被拆开的 [n] 由 carry 缓冲拼接后判定。
+
+    尾部形如 "[12"（无右括号）的片段可能是半个编号，留到下一块拼接；
+    流结束时残余 carry 不构成完整编号形态，原样放行。
+    """
+    carry = ""
+    for piece in pieces:
+        text = carry + piece
+        m = re.search(r"\[\d*$", text)
+        if m:
+            carry = text[m.start():]
+            text = text[:m.start()]
+        else:
+            carry = ""
+        cleaned, bad = _strip_invalid_refs(text, max_ref)
+        if bad:
+            logger.warning("回答引用编号越界，已剔除：%s", bad)
+        if cleaned:
+            yield cleaned
+    if carry:
+        cleaned, bad = _strip_invalid_refs(carry, max_ref)
+        if bad:
+            logger.warning("回答引用编号越界，已剔除：%s", bad)
+        if cleaned:
+            yield cleaned
 
 
 def _load_collections(user: User, db: Session) -> list[KBCollection]:

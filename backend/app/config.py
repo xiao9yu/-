@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # 属质量-时延权衡而非纯性能开关；改前先用 backend/eval/rerank_ab.py 做对照。
     # 1024 是"不截断"档：候选 chunk 最长 800 字（实测 padding 后约 521 token）。
     rerank_max_len: int = 1024
+    # LLM 流式问答三段超时保护（评测 §5.5）：32 题实测出现一例 103s 极端抖动
+    # （生成段 ~82s，约 5.5 字/秒）。正常回答（≤500 字）生成段约 10~20s，阈值留有
+    # 数倍余量；超时按 LLMError 走协议 error 事件，用户看到"请稍后重试"而非无限等待。
+    llm_first_token_timeout: float = 30.0   # 首字超时：首个内容块迟迟不来即报错
+    llm_overall_timeout: float = 60.0       # 整体超时：生成总时长上限
+    llm_silence_timeout: float = 20.0       # 静默超时：两内容块间隔上限（同时收紧 SDK 读超时）
     # 数字人语音
     asr_model: str = "paraformer-zh"        # 批量离线转写（按住说话 / 流式降级兜底）
     asr_stream_model: str = "paraformer-zh-streaming"   # 流式增量转写（自然轮次对话）
