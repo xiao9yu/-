@@ -94,3 +94,29 @@ def ask(data: AskIn, user: User = Depends(get_current_user), db: Session = Depen
                                          reranker=reranker, session=session)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/consistency")
+def consistency(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """知识库一致性自检（仅管理员）：核对 kb_chunks 表与向量库是否一致。
+
+    向量库落盘是整库覆盖写，丢失后 `kb_documents.status` 仍是 ready——系统看起来正常，
+    只有向量召回永久失手。该接口把这类不一致暴露出来（缺向量 / 孤立向量 / 记账不符）。
+    """
+    if user.role != Role.admin:
+        raise BizError(403, "仅管理员可执行知识库一致性自检")
+    return kb_service.verify_consistency(db)
+
+
+@router.post("/consistency/repair")
+def consistency_repair(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """一致性修复（仅管理员）：把「块在 DB、向量缺失」的部分重新向量化写回（幂等）。
+
+    只补缺失、不删孤立向量（删向量属破坏性操作，留待人工确认）。
+    """
+    if user.role != Role.admin:
+        raise BizError(403, "仅管理员可执行知识库一致性修复")
+    try:
+        return kb_service.repair_consistency(db)
+    except EmbedderError as exc:
+        raise BizError(502, str(exc)) from exc

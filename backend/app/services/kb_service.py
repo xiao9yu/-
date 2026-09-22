@@ -23,7 +23,7 @@ from ..services.parser import parse_document
 from ..services.parser.chunk import Chunk
 from ..services.rag import KBCollection, hybrid_retrieve
 from ..services.rag_ask import _select_hits, build_answer_prompt
-from ..services.vector_store import VectorStore, get_vector_store
+from ..services.vector_store import CollectionLockedError, VectorStore, get_vector_store
 from . import chat_service, learn_profile
 
 PUBLIC_COLLECTION = "kb_public"
@@ -242,3 +242,202 @@ def _load_collections(user: User, db: Session) -> list[KBCollection]:
     if private_rows:
         cols.append(to_col(private_collection(user.id), private_rows))
     return cols
+
+
+# ---------------- 一致性自检与修复（向量库 ↔ kb_chunks） ----------------
+
+def _enumerate_scope(vs, name: str) -> set[str] | None:
+    """取集合内全部 id；后端未实现该能力（或为测试替身）时返回 None（= 未知）。"""
+    fn = getattr(vs, "list_ids", None)
+    return fn(name) if callable(fn) else None
+
+
+def _enumerate_collections(vs) -> set[str] | None:
+    fn = getattr(vs, "list_collections", None)
+    return fn() if callable(fn) else None
+
+
+def verify_consistency(db: Session, *, vector_store: VectorStore | None = None) -> dict:
+    """核对「kb_chunks 表」与「向量库」是否一致，返回可读报告。
+
+    为什么需要它：向量库落盘是**整库覆盖写**，任何一次载入缺失、写盘中断或维度不匹配
+    都会让已有向量永久消失，而 `kb_documents.status` 仍是 `ready` —— 系统看起来一切正常，
+    只有检索悄悄少了一条召回通道（BM25 读 kb_chunks 仍能命中，向量召回则永久失手）。
+    本机实测就存在这样一份文档：`人工智能导论知识库.pdf`（3 块，DB ready，向量 0/3），
+    且 `seed_demo_data` 的幂等判断（"已有 ready 公共文档就整体跳过"）重跑也修不了。
+
+    检查三类问题：
+      · missing —— ready 文档的知识块在 DB 里存在、向量库里没有（**检索质量损失**）；
+      · orphan  —— 向量库里有、kb_chunks 表里已无对应行（删除残留）；
+      · doc_row —— 文档自身的记账不一致（chunk_count 与实算不符 / ready 但 0 块）。
+
+    参数 vector_store 主要用于测试注入；不传取单例。
+    """
+    import time as _time
+
+    vs = vector_store or get_vector_store()
+    docs = db.query(KbDocument).all()
+    chunk_rows = db.query(KbChunk).all()
+
+    by_doc: dict[int, list[KbChunk]] = {}
+    for c in chunk_rows:
+        by_doc.setdefault(c.document_id, []).append(c)
+    all_chunk_ids = {c.id for c in chunk_rows}
+
+    # 期望集合名：所有文档涉及的集合 ∪ 向量库侧实际存在的集合（后者才能发现 orphan）
+    names = {_collection(d) for d in docs}
+    store_names = _enumerate_collections(vs)
+    if store_names:
+        names |= set(store_names)
+
+    expected: dict[str, set[str]] = {}
+    for d in docs:
+        if d.status != "ready":
+            continue
+        ids = {c.id for c in by_doc.get(d.id, [])}
+        if ids:
+            expected.setdefault(_collection(d), set()).update(ids)
+
+    store_ids: dict[str, set[str] | None] = {n: _enumerate_scope(vs, n) for n in sorted(names)}
+    unsupported = sorted(n for n, v in store_ids.items() if v is None)
+
+    collections = []
+    for n in sorted(names):
+        have = store_ids.get(n)
+        exp = expected.get(n, set())
+        miss = None if have is None else sorted(exp - have)
+        orph = None if have is None else sorted(have - all_chunk_ids)
+        collections.append({
+            "name": n,
+            "expected": len(exp),
+            "in_store": None if have is None else len(have),
+            "missing": None if miss is None else len(miss),
+            "orphan": None if orph is None else len(orph),
+            "missing_ids": miss or [],
+            "orphan_ids": orph or [],
+        })
+
+    documents, problems = [], []
+    n_missing = 0
+    for d in docs:
+        row_ids = {c.id for c in by_doc.get(d.id, [])}
+        have = store_ids.get(_collection(d))
+        miss = sorted(row_ids - have) if (have is not None and d.status == "ready") else []
+        row_issues = []
+        if d.status == "ready" and not row_ids:
+            row_issues.append("状态为 ready 但没有任何知识块（幻影文档）")
+        if d.chunk_count != len(row_ids):
+            row_issues.append(f"chunk_count={d.chunk_count} 与实算 {len(row_ids)} 不符")
+        if miss:
+            row_issues.append(f"{len(miss)} 个知识块无向量（向量召回永久失手，BM25 仍可命中）")
+        if row_issues or d.status != "ready":
+            documents.append({
+                "id": d.id, "title": d.title, "scope": d.scope, "status": d.status,
+                "collection": _collection(d), "chunk_count": d.chunk_count,
+                "rows": len(row_ids), "indexed": len(row_ids) - len(miss),
+                "missing": len(miss), "missing_ids": miss, "issues": row_issues,
+            })
+        n_missing += len(miss)
+        for it in row_issues:
+            problems.append(f"doc#{d.id} {d.title}：{it}")
+
+    n_orphan = sum(c["orphan"] or 0 for c in collections)
+    for c in collections:
+        if c["missing"]:
+            problems.append(
+                f"集合 {c['name']}：{c['missing']}/{c['expected']} 个知识块缺向量")
+        if c["orphan"]:
+            problems.append(f"集合 {c['name']}：{c['orphan']} 条向量在 kb_chunks 中无对应行（删除残留）")
+
+    locked = getattr(vs, "unloaded", None) or {}
+    for n, reason in sorted(locked.items()):
+        problems.append(f"集合 {n} 载入失败已被锁定（{reason}），写入会被拒绝")
+
+    # "无法枚举"不是不一致，而是本次核对没跑完 → 单列 notes，且 ok 不能为真
+    notes = []
+    if unsupported:
+        notes.append(f"以下集合无法枚举 id，未参与核对：{', '.join(unsupported)}")
+
+    return {
+        "ok": not (n_missing or n_orphan or problems or unsupported or locked),
+        "checked_at": _time.strftime("%Y-%m-%d %H:%M:%S"),
+        "summary": {
+            "n_documents": len(docs),
+            "n_chunks": len(chunk_rows),
+            "n_missing": n_missing,
+            "n_orphan": n_orphan,
+            "n_collections": len(names),
+            "unsupported_collections": unsupported,
+            "locked_collections": sorted(locked),
+        },
+        "collections": collections,
+        "documents": documents,
+        "problems": problems,
+        "notes": notes,
+    }
+
+
+def repair_consistency(db: Session, *, vector_store: VectorStore | None = None,
+                       embedder=None) -> dict:
+    """把「知识块在 DB、向量缺失」的部分重新向量化写回（幂等）。
+
+    只补缺失，**不删 orphan**：删向量是破坏性操作，且 orphan 不影响检索质量（检索按
+    kb_chunks 回查，DB 里没有的行本就不会被选中），留待人工确认后再清理。
+
+    返回修复明细与修复后的复检结果；集合被锁定（载入失败）时该集合跳过并给出原因，
+    不强行写入（否则会把磁盘上没能载入的旧向量覆盖掉）。
+    """
+    before = verify_consistency(db, vector_store=vector_store)
+    vs = vector_store or get_vector_store()
+
+    # 需要补的 chunk id → 文档（用于补 metadatas 里的 source/page/file_id/scope）
+    docs = {d.id: d for d in db.query(KbDocument).all()}
+    todo: dict[str, list[KbChunk]] = {}
+    for d in before["documents"]:
+        if not d["missing_ids"]:
+            continue
+        rows = (db.query(KbChunk)
+                .filter(KbChunk.id.in_(d["missing_ids"]))
+                .all())
+        todo.setdefault(d["collection"], []).extend(rows)
+
+    repaired = 0
+    # 被锁定的集合：verify 因无法枚举而对其"缺失未知"，需在此显式登记为跳过。
+    # 否则调用方会看到「修复 0 条 / 跳过 0 个」，把"无法修复"误读成"全库正常"。
+    skipped = [
+        {"collection": n, "reason": f"集合载入失败已被锁定（{r}），已拒绝写入"}
+        for n, r in sorted((getattr(vs, "unloaded", None) or {}).items())
+    ]
+    emb = None
+    for col, rows in sorted(todo.items()):
+        if not rows:
+            continue
+        try:
+            if emb is None:
+                emb = embedder or get_embedder()
+            vs.create_collection(col, dim=emb.dim)
+            vs.upsert(
+                col,
+                ids=[c.id for c in rows],
+                vectors=emb.embed_texts([c.text for c in rows]),
+                metadatas=[{
+                    "chunk_id": c.id, "source": c.source, "page": c.page,
+                    "file_id": docs[c.document_id].file_id if c.document_id in docs else None,
+                    "scope": docs[c.document_id].scope if c.document_id in docs else None,
+                } for c in rows],
+            )
+            repaired += len(rows)
+            logger.info("一致性修复：集合 %s 补写 %d 个知识块向量", col, len(rows))
+        except CollectionLockedError as exc:
+            skipped.append({"collection": col, "reason": str(exc)})
+            logger.error("一致性修复跳过集合 %s：%s", col, exc)
+
+    after = verify_consistency(db, vector_store=vs)
+    return {
+        "repaired_chunks": repaired,
+        "skipped": skipped,
+        "before": before["summary"],
+        "after": after["summary"],
+        "ok": after["ok"],
+        "problems": after["problems"],
+    }

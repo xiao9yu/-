@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     vector_backend: str = "milvus"  # milvus | faiss
     milvus_uri: str = "./data/milvus.db"
+    # 精排候选数：RRF 粗排结果送进 bge-reranker-v2-m3 的条数。
+    # 本机实测（32 题 A/B，见 backend/eval/rerank_ab.py）：20 → 10 时 hit@1/3/5 与 MRR
+    # 逐项不变、且逐题比对无任何回退，而精排耗时从 18.3s 降到 11.5s（−37%）。
+    # 精排耗时与候选数近似线性（本机 torch CPU 无 CUDA，约 1.1s/对），故该值是最直接的
+    # 时延杠杆；调大前请先跑 A/B 确认质量收益存在。
+    rerank_candidates: int = 10
+    # 精排 tokenizer 截断长度。**调小会截断 chunk 尾部**，从而改变精排分数与阈值过滤，
+    # 属质量-时延权衡而非纯性能开关；改前先用 backend/eval/rerank_ab.py 做对照。
+    # 1024 是"不截断"档：候选 chunk 最长 800 字（实测 padding 后约 521 token）。
+    rerank_max_len: int = 1024
     # 数字人语音
     asr_model: str = "paraformer-zh"        # 批量离线转写（按住说话 / 流式降级兜底）
     asr_stream_model: str = "paraformer-zh-streaming"   # 流式增量转写（自然轮次对话）

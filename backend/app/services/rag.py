@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import jieba
 from rank_bm25 import BM25Plus
 
+from ..config import settings
 from .embeddings import get_embedder
 from .parser.chunk import Chunk
 from .vector_store import get_vector_store
@@ -80,9 +81,17 @@ def hybrid_retrieve(
     vector_store=None,
     embedder=None,
     rerank=None,
+    rerank_candidates: int | None = None,
 ) -> list[RagHit]:
     """混合检索：每个集合各做向量检索 + BM25，全部结果 RRF 融合。
-    rerank 非空时：RRF 粗排取前 20 → 精排回 top_k（工单18 重排序链路）。"""
+    rerank 非空时：RRF 粗排取前 rerank_candidates 条 → 精排回 top_k（工单18 重排序链路）。
+
+    候选数默认取 settings.rerank_candidates（=10），依据见该配置项注释：精排耗时与候选数
+    近似线性，而 20 → 10 在 32 题 A/B 上质量逐项不变。
+
+    注：每条召回通道的深度由 top_k 决定（每集合 2 条通道 × top_k），因此 2 个集合下
+    候选池上限为 4×top_k=20 条——旧值 20 从未真正生效，等价于"全部候选"。
+    """
     vs = vector_store or get_vector_store()
     emb = embedder or get_embedder()
     qv = emb.embed_query(question)
@@ -99,5 +108,6 @@ def hybrid_retrieve(
         ranked.append(bhits)
     fused = rrf_fuse(ranked)
     if rerank is not None:
-        return rerank(question, fused[:20], top_k)
+        n = rerank_candidates or settings.rerank_candidates
+        return rerank(question, fused[:n], top_k)
     return fused

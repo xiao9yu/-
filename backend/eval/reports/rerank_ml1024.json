@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "user": "student",
+    "n_questions": 32,
+    "k_list": [
+      10
+    ],
+    "max_candidates": 10,
+    "max_len": 1024,
+    "avg_tokens_per_pair": 514,
+    "latency_questions": 4,
+    "generated_at": "2026-09-22 15:50:43"
+  },
+  "by_k": {
+    "10": {
+      "hit@1": 0.8,
+      "hit@3": 0.9333,
+      "hit@5": 0.9667,
+      "mrr": 0.8694,
+      "avg_kept": 2.72,
+      "avg_empty_rate": 0.0938,
+      "measured_ms": 14252,
+      "n_measured": 4
+    }
+  },
+  "regressions_vs_10": []
+}

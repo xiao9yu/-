@@ -70,7 +70,7 @@ def test_get_reranker_returns_none_on_load_failure(monkeypatch):
 
 
 def test_hybrid_retrieve_rerank_limits_and_reorders():
-    """rerank 非空时：RRF 结果先取前 20 精排，返回 top_k 条且顺序按精排分。"""
+    """rerank 非空时：RRF 结果先截候选再精排，返回 top_k 条且顺序按精排分。"""
     vs, emb = _FakeVS(), _FakeEmb()
     chunks = [Chunk(text=f"语料{i}", kind="text", source="a.md", id=f"d{i}") for i in range(6)]
     col = KBCollection(name="t", chunks=chunks)
@@ -82,6 +82,33 @@ def test_hybrid_retrieve_rerank_limits_and_reorders():
     # （控制器裁定：简报原断言 top_k=3 时 len==6 与 BM25Index.search 的 top_k 截断行为矛盾）
     out2 = hybrid_retrieve("语料", [col], top_k=6, vector_store=vs, embedder=emb)
     assert len(out2) == 6
+
+
+def test_hybrid_retrieve_passes_configured_candidate_count_to_rerank(monkeypatch):
+    """送精排的候选数由 settings.rerank_candidates 决定，且可被显式入参覆盖。
+
+    钉住这条是为了防止有人把候选数悄悄改回 20：精排耗时与候选数近似线性，本机 CPU 上
+    20 对≈18s、10 对≈11.5s，而 32 题 A/B 显示两档检索质量逐项相同（见 eval/rerank_ab.py）。
+    """
+    from app.services import rag
+
+    vs, emb = _FakeVS(), _FakeEmb()
+    chunks = [Chunk(text=f"语料{i}", kind="text", source="a.md", id=f"d{i:02d}")
+              for i in range(30)]
+    col = KBCollection(name="t", chunks=chunks)
+    seen = {}
+
+    def rerank(q, hits, n):
+        seen["n"] = len(hits)
+        return hits[:n]
+
+    monkeypatch.setattr(rag.settings, "rerank_candidates", 10)
+    hybrid_retrieve("语料", [col], top_k=20, vector_store=vs, embedder=emb, rerank=rerank)
+    assert seen["n"] == 10
+
+    hybrid_retrieve("语料", [col], top_k=20, vector_store=vs, embedder=emb,
+                    rerank=rerank, rerank_candidates=7)
+    assert seen["n"] == 7        # 显式入参优先于配置
 
 
 class _FakeVS:

@@ -11,6 +11,7 @@ import logging
 import math
 import threading
 
+from ..config import settings
 from .embeddings import local_cache_ready
 from .rag import RagHit
 
@@ -18,7 +19,16 @@ logger = logging.getLogger("rerank")
 
 _ABS_FLOOR = 0.35   # 相关度绝对下限（sigmoid 后）：低于此分的块视为不相关，不引用
 _REL_RATIO = 0.5    # 相对下限：低于本问最高分一半的块视为不相关
-_MAX_LEN = 1024     # 截断长度：chunk 800 字 + 问句，XLM-R 中文约 1 token/字
+_DEFAULT_MAX_LEN = 1024     # 截断长度兜底：chunk 800 字 + 问句，XLM-R 中文约 0.65 token/字
+
+
+def _max_len() -> int:
+    """截断长度取配置（settings.rerank_max_len），便于用 A/B 脚本对照不同档位。
+
+    注意：调小该值**会截断 chunk 尾部**，从而改变精排分数与阈值过滤结果，属质量-时延
+    权衡，不是纯性能开关。改动前请先用 backend/eval/rerank_ab.py 做对照。
+    """
+    return int(getattr(settings, "rerank_max_len", _DEFAULT_MAX_LEN))
 
 
 def _sigmoid(x: float) -> float:
@@ -41,12 +51,16 @@ class _TransformerRerankModel:
         )
         self._model.eval()
 
-    def predict(self, pairs: list[tuple[str, str]]) -> list[float]:
-        """逐对打原始 logits（调用方 sigmoid 成相关度；兼容 CrossEncoder.predict 约定）。"""
+    def predict(self, pairs: list[tuple[str, str]], max_length: int | None = None) -> list[float]:
+        """逐对打原始 logits（调用方 sigmoid 成相关度；兼容 CrossEncoder.predict 约定）。
+
+        max_length 显式传入时覆盖配置——供 A/B 脚本在同一进程内对照不同截断档位。
+        """
         import torch
 
         enc = self._tokenizer(
-            pairs, padding=True, truncation=True, max_length=_MAX_LEN, return_tensors="pt"
+            pairs, padding=True, truncation=True,
+            max_length=max_length or _max_len(), return_tensors="pt",
         )
         with torch.no_grad():
             logits = self._model(**enc).logits[:, 0]

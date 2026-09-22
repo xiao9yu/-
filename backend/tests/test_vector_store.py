@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pytest
 
-from app.services.vector_store import FaissVectorStore, get_vector_store
+from app.services.vector_store import CollectionLockedError, FaissVectorStore, get_vector_store
 
 
 @pytest.fixture
@@ -191,7 +191,11 @@ def test_faiss_reads_legacy_index_written_by_write_index(tmp_path):
 
 
 def test_faiss_load_tolerates_corrupt_index(tmp_path):
-    """单个索引文件损坏（如写盘中断留下 0 字节）不应让整个向量库构造失败。"""
+    """单个索引文件损坏（如写盘中断留下 0 字节）不应让整个向量库构造失败。
+
+    同时钉住新语义：损坏的集合会被**锁定**（`unloaded`）而不是静默忽略——
+    静默忽略的后果是后续写入把空集合覆盖回磁盘，旧向量永久丢失。
+    """
     data_dir = tmp_path / "faiss"
     data_dir.mkdir(parents=True, exist_ok=True)
     (data_dir / "broken.index").write_bytes(b"")                 # 0 字节
@@ -203,4 +207,84 @@ def test_faiss_load_tolerates_corrupt_index(tmp_path):
     store = FaissVectorStore(data_dir=data_dir)                  # 不应抛异常
     assert "broken" not in store.indexes
     assert "kb1" in store.indexes
+    assert "broken" in store.unloaded                            # 锁定而非静默忽略
     assert store.search("kb1", [1.0, 0.0, 0.0], top_k=1)[0].id == "a"
+
+
+# ---------------------------------------------------------------------------
+# 回归：写入安全（整库覆盖 / 写盘中断）
+#
+# 背景：FAISS 实现把集合常驻内存、每次 upsert 都把整个集合写回磁盘。若某次启动没能
+# 载入既有集合，旧实现的 `create_collection` 会建出一个空集合，紧接着的一次 upsert
+# 就把空集合写回磁盘——旧向量永久消失且全程无报错。本机 kb_public 就因此丢过一份
+# 文档（人工智能导论知识库.pdf，3 块；文档 created_at 09-17 < 索引 mtime 09-20）。
+# ---------------------------------------------------------------------------
+
+def test_unloaded_collection_refuses_write_instead_of_clobbering(tmp_path):
+    """回归：集合载入失败后写入必须被拒绝，而不是覆盖掉磁盘上的旧向量。"""
+    data_dir = tmp_path / "faiss"
+    _seed(FaissVectorStore(data_dir=data_dir))
+
+    meta = data_dir / "kb1.meta.json"
+    backup = meta.read_text(encoding="utf-8")
+    meta.unlink()                                   # 模拟元数据丢失导致载入失败
+
+    store = FaissVectorStore(data_dir=data_dir)
+    assert "kb1" not in store.indexes
+    assert "kb1" in store.unloaded, "载入失败必须被记录（锁定），而不是静默跳过"
+    assert store.list_ids("kb1") is None            # "未知"而非"空"
+    assert "kb1" in store.list_collections()        # 仍占用该集合名
+
+    meta.write_text(backup, encoding="utf-8")       # 元数据补回来了，但本实例已锁定
+    with pytest.raises(CollectionLockedError):
+        store.create_collection("kb1", dim=3)
+    with pytest.raises(CollectionLockedError):
+        store.upsert("kb1", ids=["c"], vectors=[[1.0, 0.0, 0.0]],
+                     metadatas=[{"chunk_id": "c-c"}])
+
+    # 磁盘上的旧向量必须原封不动（旧实现此处会只剩 1 条）
+    fresh = FaissVectorStore(data_dir=data_dir)
+    assert [h.id for h in fresh.search("kb1", [1.0, 0.0, 0.0], top_k=2)] == ["a", "b"]
+
+
+def test_truncated_index_is_locked_not_silently_empty(tmp_path):
+    """回归：索引被写坏（截断）时应锁定并告警，而非表现为"空集合"。"""
+    data_dir = tmp_path / "faiss"
+    _seed(FaissVectorStore(data_dir=data_dir))
+
+    idx = data_dir / "kb1.index"
+    raw = idx.read_bytes()
+    idx.write_bytes(raw[: len(raw) // 2])           # 模拟写盘中断
+
+    store = FaissVectorStore(data_dir=data_dir)
+    assert "kb1" not in store.indexes
+    assert "kb1" in store.unloaded
+    with pytest.raises(CollectionLockedError):
+        store.create_collection("kb1", dim=3)
+
+
+def test_load_detects_metadata_count_mismatch(tmp_path):
+    """回归：ids 条数与索引条数不一致（写盘只完成一半的典型后果）应判定为损坏。"""
+    data_dir = tmp_path / "faiss"
+    _seed(FaissVectorStore(data_dir=data_dir))
+    (data_dir / "kb1.meta.json").write_text(
+        json.dumps({"ids": ["a"], "metadatas": [{"chunk_id": "c-a"}]}), encoding="utf-8")
+
+    store = FaissVectorStore(data_dir=data_dir)
+    assert "kb1" not in store.indexes
+    assert "kb1" in store.unloaded
+
+
+def test_atomic_write_leaves_no_temp_file(store):
+    """回归：落盘走"临时文件 + os.replace"，完成后不留 .tmp 残留（也不被 _load 误读）。"""
+    _seed(store)
+    assert list(store.data_dir.glob("*.tmp")) == []
+    assert not list(store.data_dir.glob("*.index.tmp"))
+
+
+def test_list_collections_and_ids(store):
+    """枚举能力：一致性自检依赖它发现 orphan 向量。"""
+    _seed(store)
+    assert store.list_collections() == {"kb1"}
+    assert store.list_ids("kb1") == {"a", "b"}
+    assert store.list_ids("nope") == set()

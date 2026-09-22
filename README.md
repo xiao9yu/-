@@ -44,9 +44,10 @@ V1 范围说明：导出以"生成时的结构化数据"为准；编辑器 HTML 
 ## 智能助教（工单 18）
 
 - **多模态知识库**：上传 PDF/DOCX/PPTX/XLSX/图片 → 解析为文本/表格/图片块（OCR+原图保留）→ bge-m3 向量化入库（Milvus，异常自动退回 FAISS）。公共库由 admin 预置维护（seed 脚本已入库演示文档《人工智能导论知识库.pdf》），私有库按用户隔离。
-- **混合检索重排**：提问后私有库+公共库各取向量 top-k 与 BM25 top-k → RRF 融合 → bge-reranker-v2-m3 精排（加载失败自动降级跳过精排）。
+- **混合检索重排**：提问后私有库+公共库各取向量 top-k 与 BM25 top-k → RRF 融合 → bge-reranker-v2-m3 精排（加载失败自动降级跳过精排）。送精排的候选数由 `settings.rerank_candidates`（默认 10）控制，取值依据见 `backend/eval/rerank_ab.py` 的 A/B。
 - **流式问答**：DeepSeek 流式生成（SSE），回答附引用溯源卡片（文件名+页码+原文摘录；图片块直显原图、表格块展示结构化文本）。
 - **模型**：bge-m3（向量化）+ bge-reranker-v2-m3（精排），首次运行需联网下载（约 3GB），可设 `HF_ENDPOINT=https://hf-mirror.com` 加速；已有缓存可设 `HF_HUB_OFFLINE=1` 离线加载。
+- **知识库一致性自检**：向量库落盘是整库覆盖写，一旦某次载入失败/中断就可能让已有向量静默消失，而文档状态仍是 `ready`（检索悄悄少一条召回通道）。现已加固：载入失败即锁定集合拒绝写入、写盘原子化、启动后台自检；管理员可用 `GET /api/kb/consistency` 查看全库一致性、`POST /api/kb/consistency/repair` 幂等补回缺失向量。详见 `docs/RAG检索与引用质量评测报告.md` §5.2。
 - **V1 范围说明**：.doc/.ppt/.xls 二进制老格式请先转换为 docx/pptx/xlsx 再上传；公式暂以文本/图片 OCR 兜底识别。（多轮会话已于 2026-09-22 补齐，见下方「数字人互动」）
 
 ## 个性化学习（工单 19）
@@ -68,7 +69,7 @@ cd backend && pytest          # 单元测试（不含 smoke）
 cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-m3 等模型）
 ```
 
-当前基线：**265 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
+当前基线：**282 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
 
 > **跑测注意（实测踩坑，两条）**
 >
@@ -106,6 +107,7 @@ pytest tests/test_eval_metrics.py                      # 指标函数单测（�
 HF_HUB_OFFLINE=1 python -m eval.run_eval               # 检索层（零 LLM 成本，约 3 分钟）
 HF_HUB_OFFLINE=1 python -m eval.run_eval --with-llm    # 端到端（消耗 32 次 LLM 调用）
 HF_HUB_OFFLINE=1 python -m eval.run_eval --no-rerank   # 对照组：关闭精排
+HF_HUB_OFFLINE=1 python -m eval.rerank_ab              # 精排候选数/截断长度的质量-时延 A/B
 ```
 
 当前基线（`student` 视角，342 chunks，top_k=5，精排开启）：
@@ -117,9 +119,9 @@ HF_HUB_OFFLINE=1 python -m eval.run_eval --no-rerank   # 对照组：关闭精�
 | 引用合法率（无越界 `[n]`） | **100%** |
 | 引用覆盖率（带标注的句子占比） | 87.0% |
 | 负样本无误引用率（资料不足不编造） | **100%** |
-| 平均检索耗时 | **21.1 s/题** |
+| 平均检索耗时 | 21.1 s → **11.5 s**（候选数 20→10 后） |
 
-> **注意检索时延**：本机 `torch` 为 CPU 版（CUDA 不可用），bge-reranker-v2-m3 精排约 1.1 s/对，20 对即 21 秒，占检索耗时约 99%——这是当前语音对话体验的主要瓶颈。完整归因、优化方向与其余发现见 `docs/RAG检索与引用质量评测报告.md`。
+> **检索时延**：本机 `torch` 为 CPU 版（CUDA 不可用），bge-reranker-v2-m3 精排约 1.1 s/对且与本机 token 计算量近似线性，占检索耗时约 99%，是语音对话首响的主要瓶颈。已把送精排的候选数从 20 降到 10（`settings.rerank_candidates`）：32 题 A/B 显示 hit@1/3/5 与 MRR **逐项不变、逐题无回退**，耗时降 37%。另已实测 `settings.rerank_max_len=384`（截断）可再降 43% 且 32 题无损失，**但该题库对"答案在 chunk 尾部"的问法覆盖不足，故未设为默认**——详见报告 §4.2。残留的 11.5 秒属结构性（5.7 亿参数交叉编码器 + 无 GPU），再压需换模型/量化/上 GPU，均须先用本评测集做对照验证。完整归因与其余发现见 `docs/RAG检索与引用质量评测报告.md`。
 
 ## 工单对照
 

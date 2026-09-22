@@ -51,6 +51,38 @@ def _preheat_models() -> None:
         logger.warning("流式语音预热异常（忽略，自然对话模式不可用）", exc_info=True)
 
 
+def _check_kb_consistency() -> None:
+    """后台核对知识库一致性：不一致只告警、不阻塞启动。
+
+    为什么启动就要查：向量库落盘是**整库覆盖写**，一次载入缺失/写盘中断就能让已有向量
+    永久消失，而 `kb_documents.status` 仍是 ready——不主动查就没有任何环节会发现
+    （BM25 读 kb_chunks 仍能命中，向量召回则永久失手）。本机实测确有此类文档。
+    单独一条线程：不与模型预热（分钟级）互相阻塞，让人一启动就看到问题。
+    """
+    try:
+        from .db import SessionLocal
+        from .services import kb_service
+
+        db = SessionLocal()
+        try:
+            rep = kb_service.verify_consistency(db)
+        finally:
+            db.close()
+        s = rep["summary"]
+        if rep["ok"]:
+            logger.info("知识库一致性自检通过（%d 文档 / %d 知识块）",
+                        s["n_documents"], s["n_chunks"])
+        else:
+            logger.warning(
+                "知识库一致性自检发现 %d 处问题（缺向量 %d 条，孤立向量 %d 条）：\n  %s\n"
+                "修复：管理员调用 POST /api/kb/consistency/repair 重新向量化缺失知识块",
+                len(rep["problems"]), s["n_missing"], s["n_orphan"],
+                "\n  ".join(rep["problems"]),
+            )
+    except Exception:
+        logger.warning("知识库一致性自检异常（忽略，不影响启动）", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)  # 启动时建表（实训简化，不引入 Alembic）
@@ -58,6 +90,7 @@ async def lifespan(app: FastAPI):
     # 懒加载（HF 不可达时下载重试可达数分钟，期间用户只见“思考中……”无反馈）。
     # daemon 线程不阻塞关停；get_reranker 失败缓存 False 哨兵，预热失败不影响服务。
     threading.Thread(target=_preheat_models, daemon=True, name="models-preheat").start()
+    threading.Thread(target=_check_kb_consistency, daemon=True, name="kb-consistency").start()
     yield
 
 
