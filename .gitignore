@@ -14,3 +14,7 @@ node_modules/
 frontend/dist/
 .DS_Store
 .superpowers/
+# 本地运行日志（uvicorn/vite 重定向产物）与进程清理记录
+backend/*.log
+frontend/*.log
+backend/kill_result.txt
