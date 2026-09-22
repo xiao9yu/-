@@ -68,7 +68,7 @@ cd backend && pytest          # 单元测试（不含 smoke）
 cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-m3 等模型）
 ```
 
-当前基线：**224 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
+当前基线：**265 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
 
 > **跑测注意（实测踩坑，两条）**
 >
@@ -95,6 +95,31 @@ FAISS 的 C++ 写盘接口（`FileIOWriter`）用窄字符 `fopen` 打开文件�
 顺带加固：`_load()` 现在对单个损坏/截断的索引文件（如写盘中断留下的 0 字节）只记录告警并跳过，不再让整个向量库构造失败。
 
 对应回归用例：`test_faiss_roundtrip_under_non_ascii_path`（中文目录落盘 + 重开读回）、`test_faiss_reads_legacy_index_written_by_write_index`（向后兼容）、`test_faiss_load_tolerates_corrupt_index`（容错）。
+
+## RAG 检索与引用质量评测
+
+`backend/eval/` 提供一套可复现的评测（题目集 32 题 + 脚本 + 指标单测），让"检索准不准、引用有没有编"从主观感受变成可对比的数字。
+
+```
+cd backend
+pytest tests/test_eval_metrics.py                      # 指标函数单测（纯函数，不加载模型）
+HF_HUB_OFFLINE=1 python -m eval.run_eval               # 检索层（零 LLM 成本，约 3 分钟）
+HF_HUB_OFFLINE=1 python -m eval.run_eval --with-llm    # 端到端（消耗 32 次 LLM 调用）
+HF_HUB_OFFLINE=1 python -m eval.run_eval --no-rerank   # 对照组：关闭精排
+```
+
+当前基线（`student` 视角，342 chunks，top_k=5，精排开启）：
+
+| 指标 | 结果 |
+|---|---|
+| hit@1 / hit@3 / hit@5 | 80.0% / 93.3% / **96.7%** |
+| MRR | **0.869** |
+| 引用合法率（无越界 `[n]`） | **100%** |
+| 引用覆盖率（带标注的句子占比） | 87.0% |
+| 负样本无误引用率（资料不足不编造） | **100%** |
+| 平均检索耗时 | **21.1 s/题** |
+
+> **注意检索时延**：本机 `torch` 为 CPU 版（CUDA 不可用），bge-reranker-v2-m3 精排约 1.1 s/对，20 对即 21 秒，占检索耗时约 99%——这是当前语音对话体验的主要瓶颈。完整归因、优化方向与其余发现见 `docs/RAG检索与引用质量评测报告.md`。
 
 ## 工单对照
 
