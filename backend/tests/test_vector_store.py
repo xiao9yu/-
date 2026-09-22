@@ -1,4 +1,7 @@
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-公共底座(16-20)
+import json
+
+import numpy as np
 import pytest
 
 from app.services.vector_store import FaissVectorStore, get_vector_store
@@ -121,3 +124,83 @@ def test_get_vector_store_singleton(monkeypatch):
     assert s3 is not s1          # reset 后重建
     assert len(calls) == 2
     vs.reset_vector_store()
+
+
+# ---------------------------------------------------------------------------
+# 回归：FAISS 与含非 ASCII 字符的路径
+# ---------------------------------------------------------------------------
+
+def _require_ascii_path(path, why: str) -> None:
+    """旧版 faiss.write_index 本身就不支持非 ASCII 路径，兼容用例需在 ASCII 目录下跑。"""
+    if not str(path).isascii():
+        pytest.skip(f"当前临时目录含非 ASCII 字符，无法用于{why}：{path}")
+
+
+def test_faiss_roundtrip_under_non_ascii_path(tmp_path):
+    """回归：路径含中文时 FAISS 索引仍可正常落盘与读回。
+
+    旧实现用 faiss.write_index/read_index，其 C++ FileIOWriter 用窄字符 fopen，
+    Windows 下打不开含非 ASCII 字符的绝对路径，upsert 会直接抛
+    `RuntimeError: ... could not open ...`。改为 Python 层字节 IO 后应正常。
+    """
+    data_dir = tmp_path / "中文知识库" / "faiss"
+    store = FaissVectorStore(data_dir=data_dir)
+    _seed(store)
+    assert (data_dir / "kb1.index").exists(), "索引未落盘"
+
+    # 关键：重新构造实例从磁盘读回，证明落盘真的可用而非只留在内存
+    reopened = FaissVectorStore(data_dir=data_dir)
+    assert "kb1" in reopened.indexes
+    hits = reopened.search("kb1", [1.0, 0.0, 0.0], top_k=2)
+    assert [h.id for h in hits] == ["a", "b"]
+    assert hits[0].metadata["chunk_id"] == "c-a"
+
+
+def test_faiss_reads_legacy_index_written_by_write_index(tmp_path):
+    """向后兼容：旧版本用 faiss.write_index 落盘的索引必须仍能读出来。
+
+    write_index 与 serialize_index 的产物字节一致（均以 fourcc IBxF 开头），
+    本用例把这一事实钉死，防止日后改格式导致既有索引读不出来。
+    """
+    _require_ascii_path(tmp_path, "写入旧格式索引")
+    import faiss as real_faiss
+
+    data_dir = tmp_path / "faiss"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    legacy = real_faiss.IndexFlatIP(3)
+    vecs = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype="float32")
+    real_faiss.normalize_L2(vecs)
+    legacy.add(vecs)
+    real_faiss.write_index(legacy, str(data_dir / "kb1.index"))   # 旧版写法
+    (data_dir / "kb1.meta.json").write_text(
+        json.dumps(
+            {
+                "ids": ["a", "b"],
+                "metadatas": [{"chunk_id": "c-a", "source": "x.pdf"}, {"chunk_id": "c-b", "source": "y.pdf"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    store = FaissVectorStore(data_dir=data_dir)
+    hits = store.search("kb1", [1.0, 0.0, 0.0], top_k=2)
+    assert [h.id for h in hits] == ["a", "b"]
+    assert hits[0].metadata["source"] == "x.pdf"
+
+
+def test_faiss_load_tolerates_corrupt_index(tmp_path):
+    """单个索引文件损坏（如写盘中断留下 0 字节）不应让整个向量库构造失败。"""
+    data_dir = tmp_path / "faiss"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "broken.index").write_bytes(b"")                 # 0 字节
+    (data_dir / "broken.meta.json").write_text(
+        json.dumps({"ids": [], "metadatas": []}), encoding="utf-8"
+    )
+    _seed(FaissVectorStore(data_dir=data_dir))                   # 正常集合应照常工作
+
+    store = FaissVectorStore(data_dir=data_dir)                  # 不应抛异常
+    assert "broken" not in store.indexes
+    assert "kb1" in store.indexes
+    assert store.search("kb1", [1.0, 0.0, 0.0], top_k=1)[0].id == "a"

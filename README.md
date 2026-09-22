@@ -65,25 +65,33 @@ cd backend && pytest          # 单元测试（不含 smoke）
 cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-m3 等模型）
 ```
 
-当前基线：**221 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
+当前基线：**224 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
 
 > **跑测注意（实测踩坑，两条）**
 >
-> 1. **不要传 `--basetemp`**。指定自定义临时目录后，全量运行时会出现大批夹具级假失败（实测同一份代码：默认目录 221 全绿，自定义目录先后出现 6 failed / 5 failed+1 error / 72 passed+149 errors 三种结果）。保持默认临时目录即可。
+> 1. **不要传 `--basetemp`**。指定自定义临时目录后，全量运行时会出现大批夹具级假失败（实测同一份代码：默认目录全绿，自定义目录先后出现 6 failed / 5 failed+1 error / 72 passed+149 errors 三种结果）。保持默认临时目录即可。
 > 2. **本机环境下退出码不可信**。若本机的批量删除防护拦截了 pytest 收尾时的临时目录清理，进程会在所有用例跑完后被中止，导致 `-q` 的汇总行丢失、退出码为 1。**判读结果请看逐用例输出**，例如：
 >    `pytest -v > out.txt 2>&1`，再数 `grep -c PASSED out.txt` / `grep -c FAILED out.txt`。
 
-### 已知限制：FAISS 与含中文的路径
+### FAISS 索引与含中文的路径（已修复）
 
-FAISS 的 C++ 写盘接口（`FileIOWriter`）用窄字符 `fopen` 打开文件，**Windows 下无法写入路径中含非 ASCII 字符的索引文件**。实测：
+FAISS 的 C++ 写盘接口（`FileIOWriter`）用窄字符 `fopen` 打开文件，**Windows 下无法打开路径中含非 ASCII 字符的索引文件**。历史实测：
 
-| 写入路径 | 结果 |
+| 路径 | `faiss.write_index` 结果 |
 |---|---|
 | `C:/.../项目/数字人/.../faiss`（含中文绝对路径） | `RuntimeError: ... could not open ...` |
 | `C:/Users/.../Temp/probe/faiss`（纯 ASCII 绝对路径） | 正常 |
-| `./data/faiss`（相对路径，项目当前用法） | 正常 |
+| `./data/faiss`（相对路径） | 正常 |
 
-项目当前通过 `settings` 中的**相对路径** `./data/faiss` 规避（相对路径字符串里没有中文字符，C++ 层只看到相对串）。**若把 `data_dir` 改成含中文的绝对路径，`upsert` 会直接抛 `RuntimeError`。** 稳妥修法是改用 `faiss.serialize_index` / `deserialize_index` + Python 层 `read_bytes`/`write_bytes`（Python 的 IO 正确处理 Unicode 路径），但会变更磁盘格式，需兼容旧索引文件，故暂未实施。
+原先只是靠 `settings` 里的**相对路径** `./data/faiss` 侥幸规避（相对字符串中没有中文，C++ 层看不到中文）。**若把 `data_dir` 配成含中文的绝对路径，`upsert` 会直接抛错。**
+
+现已修复：`FaissVectorStore` 的索引读写改走 Python 层字节 IO（`read_bytes`/`write_bytes`）配合 `serialize_index` / `deserialize_index`，绕开 C++ 窄字符 `fopen`，任何路径（含中文、含空格）均可正常读写。
+
+**无需数据迁移**：实测两种方式的产物字节完全一致（均为 4 字节 fourcc `IBxF` 开头，同一索引经 `write_index` 与 `serialize_index` 得到的 109 字节逐字节相同），旧索引文件可直接读。`test_faiss_reads_legacy_index_written_by_write_index` 把该兼容性钉死。
+
+顺带加固：`_load()` 现在对单个损坏/截断的索引文件（如写盘中断留下的 0 字节）只记录告警并跳过，不再让整个向量库构造失败。
+
+对应回归用例：`test_faiss_roundtrip_under_non_ascii_path`（中文目录落盘 + 重开读回）、`test_faiss_reads_legacy_index_written_by_write_index`（向后兼容）、`test_faiss_load_tolerates_corrupt_index`（容错）。
 
 ## 工单对照
 

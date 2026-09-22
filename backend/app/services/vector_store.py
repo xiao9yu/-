@@ -35,7 +35,17 @@ class VectorStore(ABC):
 
 
 class FaissVectorStore(VectorStore):
-    """FAISS 实现：内积度量（向量需归一化），元数据落 JSON 文件。"""
+    """FAISS 实现：内积度量（向量需归一化），元数据落 JSON 文件。
+
+    索引的读写一律走 Python 层字节 IO + ``faiss.serialize_index`` /
+    ``deserialize_index``，**不使用** ``faiss.write_index`` / ``read_index``：
+    后两者底层的 C++ ``FileIOWriter`` 用窄字符 ``fopen`` 打开文件，在 Windows 上
+    无法打开路径含非 ASCII 字符（如中文）的索引文件，会抛
+    ``RuntimeError: ... could not open ...``。
+
+    两种方式的磁盘格式完全一致（均以 4 字节 fourcc ``IBxF`` 开头，实测字节相同），
+    因此历史索引文件无需迁移即可继续读取。
+    """
 
     def __init__(self, data_dir: Path | str = "./data/faiss"):
         import faiss
@@ -57,14 +67,26 @@ class FaissVectorStore(VectorStore):
             meta_file = self.data_dir / f"{name}.meta.json"
             if not meta_file.exists():
                 continue
-            self.indexes[name] = self.faiss.read_index(str(idx_file))
-            data = json.loads(meta_file.read_text(encoding="utf-8"))
+            try:
+                self.indexes[name] = self._read_index(idx_file)
+                data = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001 — 单个索引损坏不应让整个向量库构造失败
+                logger.warning("索引 %s 载入失败，已跳过：%s", idx_file.name, exc)
+                continue
             self.ids[name] = data["ids"]
             self.metas[name] = data["metadatas"]
 
+    def _read_index(self, idx_file: Path):
+        """从磁盘读回索引（Python 层读字节，避开 C++ 窄字符 fopen 的路径限制）。"""
+        return self.faiss.deserialize_index(np.frombuffer(idx_file.read_bytes(), dtype="uint8"))
+
+    def _write_index(self, idx_file: Path, index) -> None:
+        """把索引落盘（Python 层写字节，理由同上）。"""
+        idx_file.write_bytes(self.faiss.serialize_index(index).tobytes())
+
     def _save(self, name):
         idx_file, meta_file = self._paths(name)
-        self.faiss.write_index(self.indexes[name], str(idx_file))
+        self._write_index(idx_file, self.indexes[name])
         meta_file.write_text(
             json.dumps({"ids": self.ids[name], "metadatas": self.metas[name]}, ensure_ascii=False),
             encoding="utf-8",
