@@ -23,7 +23,13 @@ LESSON_PLAN = {
 
 COURSEWARE = {
     "标题": "机器学习基础课件",
-    "幻灯片": [{"标题": "梯度下降", "要点": ["沿负梯度方向迭代", "学习率控制步长"]}],
+    "幻灯片": [{"标题": "梯度下降", "要点": ["沿负梯度方向迭代", "学习率控制步长"],
+                "讲稿": "同学们好，今天我们来学习梯度下降。它的核心思想是沿负梯度方向一步步迭代。"}],
+}
+
+COURSEWARE_LEGACY = {
+    "标题": "旧版课件",
+    "幻灯片": [{"标题": "梯度下降", "要点": ["沿负梯度方向迭代"]}],
 }
 
 EXERCISES = [
@@ -95,3 +101,22 @@ def test_export_exercises_pdf_fallback_font_twice(tmp_path, monkeypatch):
     text = doc[0].get_text()
     doc.close()
     assert "梯度下降" in text
+
+
+def test_export_courseware_pptx_writes_script_to_notes(tmp_path):
+    out = export_courseware_pptx(COURSEWARE, tmp_path / "课件.pptx")
+    assert out.exists()
+    from pptx import Presentation
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    assert slide.has_notes_slide
+    assert slide.notes_slide.notes_text_frame.text == COURSEWARE["幻灯片"][0]["讲稿"]
+
+
+def test_export_courseware_pptx_legacy_without_script_has_no_notes(tmp_path):
+    """旧课件（无讲稿）导出与现状一致：不产生备注页。"""
+    out = export_courseware_pptx(COURSEWARE_LEGACY, tmp_path / "旧课件.pptx")
+    assert out.exists()
+    from pptx import Presentation
+    prs = Presentation(str(out))
+    assert not prs.slides[0].has_notes_slide

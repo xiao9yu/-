@@ -63,13 +63,17 @@ def export_lesson_docx(content: dict, out_path: Path) -> Path:
 
 
 def export_courseware_pptx(content: dict, out_path: Path) -> Path:
-    """课件大纲 JSON → PPT 文档（标题+要点列表）。"""
+    """课件大纲 JSON → PPT 文档（标题+要点列表；每页讲稿写入备注栏供教师放映讲解）。"""
     prs = Presentation()
     for slide_data in content.get("幻灯片", []):
         slide = prs.slides.add_slide(prs.slide_layouts[1])  # 标题+内容版式
         slide.shapes.title.text = slide_data.get("标题", "")
         body = slide.placeholders[1].text_frame
         body.text = "\n".join(slide_data.get("要点", []))
+        script = (slide_data.get("讲稿") or "").strip()
+        if script:
+            # python-pptx 无显式建备注 API：访问 notes_slide 时惰性创建 notesSlide 部件
+            slide.notes_slide.notes_text_frame.text = script
     prs.save(str(out_path))
     return out_path
 
