@@ -31,8 +31,8 @@
     <el-alert v-if="hasLegacySlide" type="info" :closable="false" class="legacy-tip"
       title="该课件生成于讲课功能上线前，部分页面无讲稿，将朗读要点；重新生成可获得完整讲稿。" />
     <div class="control-bar">
-      <el-button type="primary" :disabled="playing" @click="onPlay">
-        <el-icon class="btn-ico"><VideoPlay /></el-icon>播放
+      <el-button type="primary" :disabled="muted" @click="onPlay">
+        <el-icon class="btn-ico"><VideoPlay v-if="!playing" /><VideoPause v-else /></el-icon>{{ playing ? '暂停' : '播放' }}
       </el-button>
       <el-button :disabled="pageIndex === 0" @click="onPrev">
         <el-icon class="btn-ico"><ArrowLeft /></el-icon>上一页
@@ -55,7 +55,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { ArrowLeft, ArrowRight, CloseBold, Microphone, Mute, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, CloseBold, Microphone, Mute, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { PlaybackManager } from '@/utils/audio'
 import { speakTextTimed } from '@/api/voice'
 import Live2DAvatar from '@/components/live2d/Live2DAvatar.vue'
@@ -96,6 +96,8 @@ player.onMouth = (v) => avatarRef.value?.setMouth(v)
 
 /** 播放代次：手动翻页/停止/静音后作废未完成的合成与定时器回调。 */
 let seq = 0
+/** 整课自然讲完标志：仅此时再点播放才从头重讲（手动翻到末页点播放应只讲末页）。 */
+let ended = false
 
 player.onEnd = () => {
   if (!playing.value) return
@@ -104,13 +106,19 @@ player.onEnd = () => {
     void playCurrent()
   } else {
     playing.value = false  // 末页播完自动停止
+    ended = true
+    player.stop()          // 释放 AudioContext、闭口、停 RAF 循环
   }
 }
 
 async function playCurrent() {
   const my = ++seq
   const text = currentScript.value
-  if (!text || muted.value) return
+  if (!text) {
+    fallbackAdvance(my)   // 空页（旧课件无讲稿且无要点）：跳过继续，讲课不卡死
+    return
+  }
+  if (muted.value) return
   const timed = await speakTextTimed(text)
   if (my !== seq) return  // 期间被手动翻页/停止/静音
   if (!timed) {
@@ -121,7 +129,8 @@ async function playCurrent() {
     playing.value = true
     await player.enqueue(timed.blob, timed.marks)
   } catch {
-    fallbackAdvance(my)   // 解码失败等同 TTS 不可用
+    if (my !== seq) return  // 解码期间被停止/暂停：不复活播放态
+    fallbackAdvance(my)     // 解码失败等同 TTS 不可用
   }
 }
 
@@ -137,14 +146,26 @@ function advanceOrStop() {
     void playCurrent()
   } else {
     playing.value = false
+    ended = true
+    player.stop()
   }
 }
 
 function onPlay() {
-  // 播放按钮是用户手势：在回调内同步创建/恢复 AudioContext（Chrome 自动播放策略，
+  // 播放/暂停键是用户手势：在回调内同步创建/恢复 AudioContext（Chrome 自动播放策略，
   // 手势激活过期后再创建会被静音——表现为"数字人不讲话"且口型不动）。
   player.ensureContext()
-  if (!playing.value && pageIndex.value >= props.slides.length - 1) pageIndex.value = 0
+  if (playing.value) {
+    // 暂停：掐断当前朗读、停留本页；再点播放从本页讲稿开头重讲
+    player.stop()
+    seq += 1
+    playing.value = false
+    return
+  }
+  if (ended) {
+    pageIndex.value = 0  // 整课自然讲完后再点播放：从头重讲
+    ended = false
+  }
   void playCurrent()
 }
 
@@ -153,6 +174,7 @@ function onPrev() {
   player.stop()
   seq += 1
   playing.value = false
+  ended = false
   pageIndex.value -= 1
 }
 
@@ -161,6 +183,7 @@ function onNext() {
   player.stop()
   seq += 1
   playing.value = false
+  ended = false
   pageIndex.value += 1
 }
 
@@ -168,7 +191,9 @@ function onStop() {
   player.stop()
   seq += 1
   playing.value = false
+  ended = false
   pageIndex.value = 0
+  emit('close')  // spec §3.1：停止键退出讲课态（右上角返回同效）
 }
 
 /** 静音 = 停口型不停字幕：掐断当前朗读，字幕保留。 */

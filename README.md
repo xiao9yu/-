@@ -14,7 +14,7 @@ Agent 数字人项目-教育智能体方向实训（工单 16~20）。单体平�
 
 **技术栈**：Vue3 + Element Plus + FastAPI + SQLAlchemy ｜ DeepSeek（LLM）· bge-m3 / bge-reranker-v2-m3（向量与精排）· Milvus / FAISS ｜ FunASR + FSMN-VAD + edge-tts + Live2D（Cubism 4）
 
-**质量基线**：后端 291 个自动化用例全绿（`pytest`，2 deselected）；RAG 检索评测 hit@5 **96.7%**、MRR **0.869**、引用合法率 **100%**（`backend/eval/` 可复现）。
+**质量基线**：后端 295 个自动化用例全绿（`pytest`，2 deselected；2026-09-22）；RAG 检索评测 hit@5 **96.7%**、MRR **0.869**、引用合法率 **100%**（`backend/eval/` 可复现）。
 
 ## 界面预览
 
@@ -55,7 +55,7 @@ cd frontend && npm run dev
 （生成功能需在 backend/.env 配置 DEEPSEEK_API_KEY）
 ```
 
-- **数字人讲课**：打开课件（课件大纲）→「数字人讲课」：朵娅按页朗读讲稿、自动翻页，控制条支持播放/翻页/停止/静音；生成于讲课功能上线前的旧课件自动降级朗读要点（重新生成可获讲稿）。
+- **数字人讲课**：打开课件（课件大纲）→「数字人讲课」：朵娅按页朗读讲稿、自动翻页，控制条支持播放/暂停/上一页/下一页/停止（退出讲课）/静音；生成于讲课功能上线前的旧课件自动降级朗读要点（重新生成可获讲稿）。
 
 测试用例与验收清单见 `docs/工单17-智能备课-测试用例与结果.md`。
 
@@ -89,7 +89,7 @@ cd backend && pytest          # 单元测试（不含 smoke）
 cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-m3 等模型）
 ```
 
-当前基线：**291 passed, 2 deselected**（实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
+当前基线：**295 passed, 2 deselected**（2026-09-22 实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
 
 > **跑测注意（实测踩坑，两条）**
 >

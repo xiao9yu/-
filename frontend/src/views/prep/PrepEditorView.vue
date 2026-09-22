@@ -120,7 +120,11 @@ const editorConfig = {
   },
 }
 
-function enterLecture() { lectureMode.value = true }
+function enterLecture() {
+  // 编辑器随 v-else 卸载：清空引用，避免路由离开时对已销毁实例二次 destroy
+  editorRef.value = null
+  lectureMode.value = true
+}
 
 function onCreated(editor: any) { editorRef.value = editor }
 
