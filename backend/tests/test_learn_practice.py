@@ -141,12 +141,37 @@ def test_submit_wrong_creates_wrongbook(db, user, seeded, monkeypatch):
     wq = db.get(WrongQuestion, result["wrong_question"]["id"])
     assert wq.user_answer == "B" and wq.correct_answer == "A"
     assert wq.knowledge_point == "梯度下降"
+    assert wq.course_id == seeded["course"].id  # 入册携带 lesson 所属课程（错题本按方向独立）
     # 再次答错 → 第二条错题同样生成成功；画像 0 + (-15) 夹取到 0
     result2 = learn_practice.submit_answer(
         user, seeded["lesson"].id, "梯度下降题0", "B", db, llm=FakeLLM())
     assert result2["wrong_question"]["status"] == "generated"
     row = db.query(ProfileKp).first()
     assert row.mastery == 0.0
+
+
+def test_submit_wrong_course_isolation(db, user):
+    """入册链路课程隔离：A/B 两课各有同名知识点「决策树」的习题，
+    在 A 课答错 → A 课错题本查得到、B 课查不到（submit_answer 传入 lesson.course_id）。"""
+    course_a = Course(name="课程甲", subject="x", owner_id=1)
+    course_b = Course(name="课程乙", subject="x", owner_id=1)
+    db.add_all([course_a, course_b])
+    db.flush()
+    lesson_a = Lesson(course_id=course_a.id, title="习题集甲", lesson_type="exercises",
+                      content_json={"习题": [_question("决策树甲题", "A", kp="决策树")]},
+                      created_by=1)
+    lesson_b = Lesson(course_id=course_b.id, title="习题集乙", lesson_type="exercises",
+                      content_json={"习题": [_question("决策树乙题", "A", kp="决策树")]},
+                      created_by=1)
+    db.add_all([lesson_a, lesson_b])
+    db.commit()
+    result = learn_practice.submit_answer(
+        user, lesson_a.id, "决策树甲题", "B", db, llm=FakeLLM())
+    assert result["correct"] is False
+    wq = db.get(WrongQuestion, result["wrong_question"]["id"])
+    assert wq.course_id == course_a.id
+    assert len(learn_wrongbook.list_wrongbook(user, db, course_id=course_a.id)) == 1
+    assert learn_wrongbook.list_wrongbook(user, db, course_id=course_b.id) == []
 
 
 def test_difficulty_down(db, user):

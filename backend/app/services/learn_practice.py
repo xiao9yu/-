@@ -199,10 +199,12 @@ def submit_answer(user: User, lesson_id: int, stem: str, answer: str,
     result = {"correct": correct, "answer": q.get("答案", ""), "analysis": q.get("解析", ""),
               "knowledge_point": kp_name, "difficulty_new": new_difficulty}
     if not correct:
+        # 错题入册携带 lesson.course_id（错题本按方向独立；lesson 由 find_question 保证存在）
         wq = learn_wrongbook.add_wrong_question(
             user, stem=q["题干"], options=q.get("选项", []), user_answer=answer,
             correct_answer=str(q.get("答案", "")), knowledge_point=kp_name,
-            difficulty=q.get("难度", row.difficulty), db=db, llm=llm)
+            difficulty=q.get("难度", row.difficulty), db=db, llm=llm,
+            course_id=lesson.course_id)
         result["wrong_question"] = {"id": wq.id, "status": wq.status}
     db.commit()
     return result

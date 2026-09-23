@@ -278,6 +278,8 @@ def test_practice_prev_stem(env):
 
 
 def test_wrongbook_course_filter(env):
+    """错题本按课程过滤（course_id 精确匹配）：同名知识点「决策树」的 B 课错题
+    不泄漏进 A 课错题本；不传 course_id 全局兜底；响应结构不含 course_id。"""
     client, headers, _, Session, course = env
     from app.models.learn import KnowledgePoint, WrongQuestion
     s = Session()
@@ -290,13 +292,24 @@ def test_wrongbook_course_filter(env):
     s.flush()
     s.add_all([
         WrongQuestion(user_id=student.id, stem="错题A", user_answer="B",
-                      correct_answer="A", knowledge_point="决策树"),
+                      correct_answer="A", knowledge_point="决策树",
+                      course_id=course.id),
         WrongQuestion(user_id=student.id, stem="错题B", user_answer="B",
-                      correct_answer="A", knowledge_point="聚类"),
+                      correct_answer="A", knowledge_point="决策树",
+                      course_id=course_b.id),
     ])
     s.commit()
     resp = client.get(f"/api/learn/wrongbook?course_id={course.id}",
                       headers=headers["student"])
     assert resp.status_code == 200
     assert [w["stem"] for w in resp.json()] == ["错题A"]
+    # 反方向：B 课错题本只有 B 课那条
+    resp_b = client.get(f"/api/learn/wrongbook?course_id={course_b.id}",
+                        headers=headers["student"])
+    assert [w["stem"] for w in resp_b.json()] == ["错题B"]
+    # 不传 course_id → 全局兜底（旧调用方兼容），且响应结构不含 course_id 字段
+    resp_all = client.get("/api/learn/wrongbook", headers=headers["student"])
+    items = resp_all.json()
+    assert {w["stem"] for w in items} == {"错题A", "错题B"}
+    assert all("course_id" not in w for w in items)
     s.close()

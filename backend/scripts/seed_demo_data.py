@@ -190,10 +190,13 @@ def make_demo_files() -> None:
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19 扩展：多学习方向)
 def migrate_learn_schema(db) -> None:
     """Plan G 旧库迁移（幂等）：knowledge_points 加 course_id 列 → 回填「人工智能导论」→
-    移除旧 name 唯一索引、重建 (course_id, name) 唯一索引。新库（create_all 建表）自动跳过。"""
+    移除旧 name 唯一索引、重建 (course_id, name) 唯一索引；wrong_questions 同样加
+    course_id 列并回填「人工智能导论」（旧错题全部来自该课程，修复跨课程错题泄漏）。
+    新库（create_all 建表）自动跳过。"""
     from sqlalchemy import inspect, text
     engine = db.get_bind()
-    cols = {c["name"] for c in inspect(engine).get_columns("knowledge_points")}
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("knowledge_points")}
     if "course_id" not in cols:
         db.execute(text("ALTER TABLE knowledge_points "
                         "ADD COLUMN course_id INTEGER REFERENCES courses(id)"))
@@ -208,6 +211,16 @@ def migrate_learn_schema(db) -> None:
     db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_kp_course_name "
                     "ON knowledge_points (course_id, name)"))
     db.commit()
+    if inspector.has_table("wrong_questions"):
+        cols_wq = {c["name"] for c in inspector.get_columns("wrong_questions")}
+        if "course_id" not in cols_wq:
+            db.execute(text("ALTER TABLE wrong_questions "
+                            "ADD COLUMN course_id INTEGER REFERENCES courses(id)"))
+            db.commit()
+        db.execute(text("UPDATE wrong_questions SET course_id = "
+                        "(SELECT id FROM courses WHERE name = '人工智能导论') "
+                        "WHERE course_id IS NULL"))
+        db.commit()
 
 
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19 扩展：多学习方向)

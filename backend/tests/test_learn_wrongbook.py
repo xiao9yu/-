@@ -5,7 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models.learn import WrongQuestion
+from app.models.learn import KnowledgePoint, WrongQuestion
+from app.models.prep import Course
 from app.models.user import Role, User
 from app.services import learn_wrongbook
 from app.services.llm_gateway import LLMError
@@ -51,10 +52,10 @@ def user(db):
     return u
 
 
-def _kwargs():
+def _kwargs(kp="梯度下降"):
     return dict(stem="学习率过大会导致什么？", options=["A.收敛慢", "B.震荡发散"],
                 user_answer="A", correct_answer="B",
-                knowledge_point="梯度下降", difficulty="中")
+                knowledge_point=kp, difficulty="中")
 
 
 def test_add_wrong_question_generated(db, user):
@@ -94,6 +95,44 @@ def test_variant_item_missing_fields_keeps_record_failed(db, user):
     wq = learn_wrongbook.add_wrong_question(user, db=db, llm=FakeLLM(bad), **_kwargs())
     assert wq.status == "failed"
     assert wq.analysis == "" and wq.variants == []
+
+
+def test_add_wrong_question_course_id_default_none(db, user):
+    """不传 course_id（旧调用方）→ 错题 course_id 为 None，全局错题本仍可见。"""
+    wq = learn_wrongbook.add_wrong_question(
+        user, db=db, llm=FakeLLM(LLMError("未配置")), **_kwargs())
+    assert db.get(WrongQuestion, wq.id).course_id is None
+    assert [w.id for w in learn_wrongbook.list_wrongbook(user, db)] == [wq.id]
+
+
+def test_list_wrongbook_course_isolation(db, user):
+    """跨课程泄漏钉死（终审缺陷）：A/B 两课各有同名知识点「决策树」——
+    在 A 课答错的题，A 课错题本查得到、B 课查不到，反之亦然；不传 course_id 全局兜底。"""
+    course_a = Course(name="人工智能导论", subject="x", owner_id=1)
+    course_b = Course(name="机器学习", subject="x", owner_id=1)
+    db.add_all([course_a, course_b])
+    db.flush()
+    db.add_all([KnowledgePoint(name="决策树", course_id=course_a.id),
+                KnowledgePoint(name="决策树", course_id=course_b.id)])
+    db.flush()
+    wq_a = learn_wrongbook.add_wrong_question(
+        user, db=db, llm=FakeLLM(LLMError("未配置")),
+        course_id=course_a.id, **_kwargs(kp="决策树"))
+    assert wq_a.course_id == course_a.id
+    # A 课查得到，B 课查不到（同名知识点互不泄漏）
+    assert [w.id for w in learn_wrongbook.list_wrongbook(user, db, course_id=course_a.id)] \
+        == [wq_a.id]
+    assert learn_wrongbook.list_wrongbook(user, db, course_id=course_b.id) == []
+    # 反方向：B 课答错 → B 课查得到、A 课仍只有 A 课那条
+    wq_b = learn_wrongbook.add_wrong_question(
+        user, db=db, llm=FakeLLM(LLMError("未配置")),
+        course_id=course_b.id, **_kwargs(kp="决策树"))
+    assert [w.id for w in learn_wrongbook.list_wrongbook(user, db, course_id=course_b.id)] \
+        == [wq_b.id]
+    assert [w.id for w in learn_wrongbook.list_wrongbook(user, db, course_id=course_a.id)] \
+        == [wq_a.id]
+    # 不传 course_id → 全部课程全局兜底（旧调用方兼容）
+    assert {w.id for w in learn_wrongbook.list_wrongbook(user, db)} == {wq_a.id, wq_b.id}
 
 
 def test_list_and_regenerate(db, user):

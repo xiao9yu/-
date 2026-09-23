@@ -10,7 +10,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..core.exceptions import BizError
-from ..models.learn import KnowledgePoint, WrongQuestion
+from ..models.learn import WrongQuestion
 from ..models.user import User
 from .llm_gateway import LLMGateway, LLMError, get_gateway
 
@@ -77,11 +77,16 @@ def _generate_into(wq: WrongQuestion, llm: LLMGateway | None) -> None:
 
 def add_wrong_question(user: User, *, stem: str, options: list, user_answer: str,
                        correct_answer: str, knowledge_point: str, difficulty: str,
-                       db: Session, llm: LLMGateway | None = None) -> WrongQuestion:
-    """登记错题并同步生成 AI 解析；LLM 失败错题保留（status=failed），不抛异常。"""
-    wq = WrongQuestion(user_id=user.id, stem=stem, options=options, user_answer=user_answer,
-                       correct_answer=correct_answer, knowledge_point=knowledge_point,
-                       difficulty=difficulty, status="pending")
+                       db: Session, llm: LLMGateway | None = None,
+                       course_id: int | None = None) -> WrongQuestion:
+    """登记错题并同步生成 AI 解析；LLM 失败错题保留（status=failed），不抛异常。
+
+    Plan G：course_id 用于错题本课程隔离（按方向独立）；为空 = 旧调用/未分类兜底。
+    """
+    wq = WrongQuestion(user_id=user.id, course_id=course_id, stem=stem, options=options,
+                       user_answer=user_answer, correct_answer=correct_answer,
+                       knowledge_point=knowledge_point, difficulty=difficulty,
+                       status="pending")
     db.add(wq)
     db.flush()
     _generate_into(wq, llm)
@@ -91,12 +96,11 @@ def add_wrong_question(user: User, *, stem: str, options: list, user_answer: str
 
 
 def list_wrongbook(user: User, db: Session, course_id: int | None = None) -> list[WrongQuestion]:
-    """本人错题本（倒序）。Plan G：course_id 非空时只返回该课程知识点对应的错题。"""
+    """本人错题本（倒序）。Plan G：course_id 非空时按课程相等过滤——错题本按方向独立，
+    跨方向同名知识点互不影响（不再按知识点名字符串匹配）；None 保持「全部课程」全局兜底。"""
     query = db.query(WrongQuestion).filter(WrongQuestion.user_id == user.id)
     if course_id is not None:
-        names = [kp.name for kp in db.query(KnowledgePoint)
-                 .filter(KnowledgePoint.course_id == course_id).all()]
-        query = query.filter(WrongQuestion.knowledge_point.in_(names))
+        query = query.filter(WrongQuestion.course_id == course_id)
     return query.order_by(WrongQuestion.id.desc()).all()
 
 

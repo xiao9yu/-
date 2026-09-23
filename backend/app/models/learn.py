@@ -96,12 +96,19 @@ class LearnEvent(Base):
 
 
 class WrongQuestion(Base):
-    """AIGC 错题本：答错登记 + DeepSeek 生成的解析/错误原因/变式题。"""
+    """AIGC 错题本：答错登记 + DeepSeek 生成的解析/错误原因/变式题。
+
+    Plan G：新增 course_id 课程隔离——错题本按学习方向独立（跨方向同名知识点互不影响），
+    列表按 course_id 过滤而非知识点名字符串。course_id 为空 = 旧数据/未分类兜底
+    （全局错题本可见）。旧库加列回填见 scripts/seed_demo_data.py 的 migrate_learn_schema。
+    """
 
     __tablename__ = "wrong_questions"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    course_id: Mapped[int | None] = mapped_column(
+        ForeignKey("courses.id"), nullable=True, index=True, default=None)
     stem: Mapped[str] = mapped_column(Text)                    # 原题干
     options: Mapped[list] = mapped_column(JSON, default=list)
     user_answer: Mapped[str] = mapped_column(String(200))      # 学生错误答案

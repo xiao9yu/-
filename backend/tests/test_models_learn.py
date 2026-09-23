@@ -79,6 +79,7 @@ def test_wrong_question_defaults_and_json(db, user):
     db.commit()
     got = db.get(WrongQuestion, wq.id)
     assert got.status == "pending"
+    assert got.course_id is None  # Plan G：course_id 默认 None（旧数据/未分类兜底）
     assert got.analysis == ""
     assert got.variants == []
     got.variants = [{"题干": "变式1", "选项": ["A", "B"], "答案": "A", "解析": ""}]
