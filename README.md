@@ -14,7 +14,7 @@ Agent 数字人项目-教育智能体方向实训（工单 16~20）。单体平�
 
 **技术栈**：Vue3 + Element Plus + FastAPI + SQLAlchemy ｜ DeepSeek（LLM）· bge-m3 / bge-reranker-v2-m3（向量与精排）· Milvus / FAISS ｜ FunASR + FSMN-VAD + edge-tts + Live2D（Cubism 4）
 
-**质量基线**：后端 319 个自动化用例全绿（`pytest`，2 deselected；2026-09-23）；RAG 检索评测 hit@5 **96.7%**、MRR **0.869**、引用合法率 **100%**（`backend/eval/` 可复现）。
+**质量基线**：后端 322 个自动化用例全绿（`pytest`，2 deselected；2026-09-23）；RAG 检索评测 hit@5 **96.7%**、MRR **0.869**、引用合法率 **100%**（`backend/eval/` 可复现）。
 
 ## 界面预览
 
@@ -92,7 +92,7 @@ cd backend && pytest          # 单元测试（不含 smoke）
 cd backend && pytest -m smoke -o addopts=""   # 冒烟测试（需已下载 bge-m3 等模型）
 ```
 
-当前基线：**319 passed, 2 deselected**（2026-09-23 实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
+当前基线：**322 passed, 2 deselected**（2026-09-23 实测）。跑测前建议 `set HF_HUB_OFFLINE=1` 走本地模型缓存。
 
 > **跑测注意（实测踩坑，两条）**
 >
