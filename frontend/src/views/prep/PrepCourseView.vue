@@ -57,6 +57,7 @@
                 <el-radio-button value="plan">教案</el-radio-button>
                 <el-radio-button value="cw">课件大纲</el-radio-button>
                 <el-radio-button value="exercises">习题</el-radio-button>
+                <el-radio-button value="kb_exercises">知识库出题</el-radio-button>
                 <el-radio-button value="case">案例</el-radio-button>
                 <el-radio-button value="exam">月考试题</el-radio-button>
               </el-radio-group>
@@ -64,18 +65,30 @@
             <el-form-item label="章节"><el-input v-model="genForm.chapter" placeholder="如：第3章 机器学习基础" /></el-form-item>
             <el-form-item label="教学目标"><el-input v-model="genForm.objectives" type="textarea" /></el-form-item>
             <el-form-item label="课时"><el-input v-model="genForm.hours" placeholder="2课时" /></el-form-item>
-            <el-form-item v-if="genForm.type === 'exercises'" label="知识点">
-              <el-input v-model="genForm.knowledgePoints" placeholder="用、分隔：梯度下降、线性回归" />
+            <el-form-item v-if="genForm.type === 'exercises' || genForm.type === 'kb_exercises'" label="知识点">
+              <el-input v-model="genForm.knowledgePoints" placeholder="用、分隔：线性表、栈与队列" />
+            </el-form-item>
+            <el-form-item v-if="genForm.type === 'kb_exercises'" label="难度">
+              <el-select v-model="genForm.difficulty" style="width: 220px">
+                <el-option label="易中难混合" value="" />
+                <el-option label="易" value="易" />
+                <el-option label="中" value="中" />
+                <el-option label="难" value="难" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="genForm.type === 'kb_exercises'" label="题数">
+              <el-input-number v-model="genForm.count" :min="1" :max="20" />
             </el-form-item>
             <el-form-item v-if="genForm.type === 'exam'" label="知识点分布">
               <el-input v-model="genForm.distribution" placeholder="梯度下降:30%、线性回归:30%（知识点:占比 换行分隔）" type="textarea" />
             </el-form-item>
-            <el-form-item label="引用资源">
-              <el-input v-model="genForm.query" placeholder="留空不检索；填写关键词将检索校本资源并标注引用" />
+            <el-form-item :label="genForm.type === 'kb_exercises' ? '检索知识库' : '引用资源'">
+              <el-input v-model="genForm.query" :placeholder="genForm.type === 'kb_exercises'
+                ? '检索知识库关键词，留空按知识点或课程名检索' : '留空不检索；填写关键词将检索校本资源并标注引用'" />
             </el-form-item>
           </el-form>
           <el-button type="primary" :loading="generating" @click="onGenerate">
-            <el-icon class="btn-ico"><MagicStick /></el-icon>生成初稿
+            <el-icon class="btn-ico"><MagicStick /></el-icon>{{ genForm.type === 'kb_exercises' ? '生成并进入学习题库' : '生成初稿' }}
           </el-button>
 
           <div v-if="result" class="result-panel">
@@ -84,7 +97,7 @@
               <el-button text size="small" type="primary" @click="onCopyResult">复制 JSON</el-button>
             </div>
             <pre class="result-pre">{{ JSON.stringify(result.content, null, 2) }}</pre>
-            <div class="result-save">
+            <div v-if="result.type !== 'kb_exercises'" class="result-save">
               <el-input v-model="lessonTitle" placeholder="保存为教案标题" style="width: 300px" />
               <el-button type="success" @click="onSave">保存为教案/课件</el-button>
             </div>
@@ -138,7 +151,7 @@ const course = ref<Course | null>(null)
 const searchQ = ref('')
 const searchHits = ref<any[]>([])
 const searching = ref(false)
-const genForm = reactive({ type: 'plan', chapter: '', objectives: '', hours: '', knowledgePoints: '', distribution: '', query: '' })
+const genForm = reactive({ type: 'plan', chapter: '', objectives: '', hours: '', knowledgePoints: '', distribution: '', query: '', difficulty: '', count: 10 })
 const generating = ref(false)
 const result = ref<any>(null)
 const lessonTitle = ref('')
@@ -205,7 +218,7 @@ async function onGenerate() {
       type: genForm.type, chapter: genForm.chapter, objectives: genForm.objectives,
       hours: genForm.hours, query: genForm.query,
     }
-    if (genForm.type === 'exercises') {
+    if (genForm.type === 'exercises' || genForm.type === 'kb_exercises') {
       payload.knowledge_points = genForm.knowledgePoints.split(/[、,，]/).filter(Boolean)
     }
     if (genForm.type === 'exam' && genForm.distribution.trim()) {
@@ -214,8 +227,18 @@ async function onGenerate() {
         return { '知识点': kp.trim(), '占比': (pct || '').trim() }
       })
     }
+    if (genForm.type === 'kb_exercises') {
+      payload.difficulty = genForm.difficulty
+      payload.count = genForm.count
+    }
     result.value = await generateContent(courseId, payload)
-    lessonTitle.value = result.value.content['标题'] || result.value.content['试卷标题'] || '未命名'
+    if (genForm.type === 'kb_exercises') {
+      const saved = result.value.lesson
+      ElMessage.success(`已生成并进入学习题库：新增 ${saved.added} 题，共 ${saved.total} 题`)
+      await load()
+    } else {
+      lessonTitle.value = result.value.content['标题'] || result.value.content['试卷标题'] || '未命名'
+    }
   } finally { generating.value = false }
 }
 
