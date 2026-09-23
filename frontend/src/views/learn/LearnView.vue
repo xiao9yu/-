@@ -301,14 +301,18 @@ async function startDiagnostic() {
 }
 
 async function onSwitchDirection() {
-  // 切换方向重置全部面板状态（诊断/练习/结果），避免跨方向残留
+  // 切换方向重置全部面板状态（诊断/练习/结果/作答/雷达图），避免跨方向残留
   diagnosing.value = false
   diagQuestions.value = []
+  Object.keys(diagAnswers).forEach(k => delete diagAnswers[k])
   currentQuestion.value = null
   result.value = null
   selectedAnswer.value = ''
   practiceKp.value = ''
   lastStem.value = ''
+  // 销毁旧雷达图实例：切换后 tabs 重挂载会换新 div，旧实例绑在已卸载节点上，不销毁则新方向画像渲染空白
+  radarChart?.dispose()
+  radarChart = null
   await loadDashboard()
   await loadWrongbook()
 }
