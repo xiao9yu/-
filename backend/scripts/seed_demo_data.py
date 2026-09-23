@@ -16,8 +16,7 @@ from pymupdf import open as open_pdf
 from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
 from app.models.file import FileRecord
-from app.models.learn import KnowledgePoint, KpPrereq
-from app.models.prep import Course, CourseFile, Lesson
+from app.models.prep import Course, CourseFile
 from app.models.user import Role, User
 from app.services.file_service import save_upload
 
@@ -70,30 +69,32 @@ def seed_prep_demo(db) -> None:
 
 
 def seed_kb_demo(db, upload_dir="./uploads"):
-    """公共库演示文档：生成 PDF（文本+表格）→ 解析 → 向量化入公共库。幂等：已有 ready 公共文档则跳过。"""
+    """公共库演示文档：AI 知识库 PDF + 两个新方向 .md 文档。幂等：按标题判存在。"""
     from app.models.kb import KbDocument
-    exists = db.query(KbDocument).filter(KbDocument.scope == "public",
-                                         KbDocument.status == "ready").first()
-    if exists:
-        print("公共库已有演示文档，跳过")
-        return
-    from app.models.user import User
-    admin = db.query(User).filter(User.username == "admin").first()
-    if admin is None:
-        print("admin 不存在，跳过公共库演示数据")
-        return
-    pdf_path = Path(tempfile.gettempdir()) / "kb_demo_人工智能导论知识库.pdf"
-    _build_kb_demo_pdf(pdf_path)
-    from app.services import kb_service
-    from app.services.embeddings import EmbedderError
-    from fastapi import UploadFile
-    with open(pdf_path, "rb") as f:
-        file = UploadFile(filename="人工智能导论知识库.pdf", file=f)
-        try:
-            doc = kb_service.add_document(file, "public", admin, upload_dir, db)
-            print(f"公共库演示文档已入库：{doc.title}（{doc.chunk_count} 块）")
-        except EmbedderError as exc:
-            print(f"bge-m3 不可用，跳过公共库演示数据：{exc}")
+    from scripts.seed_learn_bank import seed_kb_direction_docs
+    exists = db.query(KbDocument).filter(KbDocument.title == "人工智能导论知识库.pdf").first()
+    if exists is None:
+        from app.models.user import User
+        admin = db.query(User).filter(User.username == "admin").first()
+        if admin is None:
+            print("admin 不存在，跳过公共库演示数据")
+        else:
+            pdf_path = Path(tempfile.gettempdir()) / "kb_demo_人工智能导论知识库.pdf"
+            _build_kb_demo_pdf(pdf_path)
+            from app.services import kb_service
+            from app.services.embeddings import EmbedderError
+            from fastapi import UploadFile
+            with open(pdf_path, "rb") as f:
+                file = UploadFile(filename="人工智能导论知识库.pdf", file=f)
+                try:
+                    doc = kb_service.add_document(file, "public", admin, upload_dir, db)
+                    print(f"公共库演示文档已入库：{doc.title}（{doc.chunk_count} 块）")
+                except EmbedderError as exc:
+                    print(f"bge-m3 不可用，跳过公共库演示数据：{exc}")
+    else:
+        print("公共库演示文档「人工智能导论知识库.pdf」已存在，跳过")
+    for line in seed_kb_direction_docs(db, upload_dir):
+        print(f"公共库演示文档已入库：{line}")
 
 
 def _build_kb_demo_pdf(path):
@@ -186,126 +187,6 @@ def make_demo_files() -> None:
     print("演示文件已生成：", DEMO_DIR)
 
 
-# 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19)
-LEARN_KPS = [
-    ("Python基础", "Python 语法与常用库入门"),
-    ("线性代数", "向量、矩阵运算与线性变换"),
-    ("概率统计", "概率分布与统计推断基础"),
-    ("梯度下降", "沿负梯度方向迭代更新参数的最优化算法"),
-    ("线性回归", "拟合特征与目标间线性关系的回归模型"),
-    ("逻辑回归", "对数几率模型，解决二分类问题"),
-    ("决策树", "基于特征划分的树形分类模型"),
-    ("神经网络", "多层神经元连接构成的学习模型"),
-    ("反向传播", "链式法则逐层计算梯度的训练算法"),
-    ("深度学习基础", "多层神经网络的训练与调优"),
-    ("卷积神经网络", "卷积+池化提取空间特征的深度网络"),
-    ("自然语言处理", "让计算机理解与生成自然语言的技术"),
-]
-
-LEARN_PREREQS = [
-    ("梯度下降", "Python基础"), ("梯度下降", "线性代数"),
-    ("线性回归", "梯度下降"), ("线性回归", "Python基础"),
-    ("逻辑回归", "线性回归"),
-    ("决策树", "概率统计"),
-    ("反向传播", "梯度下降"),
-    ("神经网络", "线性回归"), ("神经网络", "反向传播"),
-    ("深度学习基础", "神经网络"),
-    ("卷积神经网络", "深度学习基础"),
-    ("自然语言处理", "深度学习基础"),
-]
-
-
-def _ex(stem, options, answer, kp, diff, analysis):
-    """演示习题工厂：题干/选项/答案/解析/知识点/难度。
-
-    （修复：选项此前被写死为同一组占位值，导致全部习题题干与选项错位、
-    错题本解析引用的选项与题目自带选项不一致；现由调用方逐题传入真实选项。）
-    """
-    return {"题干": stem, "选项": options, "答案": answer, "解析": analysis, "知识点": kp, "难度": diff}
-
-
-LEARN_EXERCISES = [
-    _ex("Python 中定义函数使用的关键字是？",
-        ["A.def", "B.func", "C.function", "D.define"],
-        "A", "Python基础", "易",
-        "Python 用 def 关键字定义函数；func、function、define 均不是关键字。"),
-    _ex("两个矩阵能够相乘的前提是？",
-        ["A.左矩阵的列数等于右矩阵的行数", "B.两个矩阵的行数相等",
-         "C.两个矩阵的列数相等", "D.两个矩阵都是方阵"],
-        "A", "线性代数", "易",
-        "矩阵乘法要求左矩阵列数等于右矩阵行数。"),
-    _ex("事件发生的概率取值范围是？",
-        ["A.[0,1]", "B.(-1,1)", "C.(0,+∞)", "D.(-∞,+∞)"],
-        "A", "概率统计", "易",
-        "概率取值恒在 [0,1] 区间。"),
-    _ex("梯度下降算法中控制每次更新步长的参数是？",
-        ["A.学习率", "B.批量大小", "C.迭代次数", "D.正则化系数"],
-        "A", "梯度下降", "易",
-        "学习率控制参数每次更新的步长。"),
-    _ex("梯度下降中参数更新方向是？",
-        ["A.损失函数的负梯度方向", "B.损失函数的正梯度方向",
-         "C.与梯度垂直的方向", "D.随机方向"],
-        "A", "梯度下降", "易",
-        "沿损失函数的负梯度方向迭代更新参数，损失逐步减小。"),
-    _ex("学习率过大会导致什么？",
-        ["A.收敛速度变慢", "B.损失函数震荡甚至发散",
-         "C.模型一定欠拟合", "D.梯度一定消失"],
-        "B", "梯度下降", "中",
-        "学习率过大步长过大，损失会震荡甚至发散；过小则收敛缓慢。"),
-    _ex("关于批量梯度下降与小批量梯度下降，说法正确的是？",
-        ["A.批量梯度下降每步使用全部样本，计算开销大", "B.小批量梯度下降每步使用全部样本",
-         "C.批量梯度下降每步只使用一个样本", "D.两者每步使用的样本数量相同"],
-        "A", "梯度下降", "难",
-        "批量梯度下降每步使用全部样本、计算开销大；小批量是折中方案，不保证一定更快收敛。"),
-    _ex("以下哪个场景最适合线性回归？",
-        ["A.预测房价", "B.图像分类", "C.文本情感分析", "D.语音识别"],
-        "A", "线性回归", "易",
-        "线性回归拟合连续值，典型场景是房价预测。"),
-    _ex("线性回归常用的损失函数是？",
-        ["A.均方误差（MSE）", "B.交叉熵损失", "C.Hinge 损失", "D.对数似然损失"],
-        "A", "线性回归", "中",
-        "线性回归用均方误差（MSE）衡量预测与真实值的差距。"),
-    _ex("多元线性回归中特征存在高度共线性，通常会导致？",
-        ["A.回归系数估计不稳定", "B.模型无法训练",
-         "C.预测结果恒为常数", "D.特征自动被剔除"],
-        "A", "线性回归", "难",
-        "共线性使系数估计不稳定（方差大），不影响模型可训练性。"),
-    _ex("逻辑回归主要用于解决什么问题？",
-        ["A.二分类问题", "B.连续值回归预测", "C.聚类问题", "D.数据降维"],
-        "A", "逻辑回归", "易",
-        "逻辑回归是对数几率模型，解决二分类问题。"),
-    _ex("逻辑回归把线性输出映射到 0~1 区间的函数是？",
-        ["A.Sigmoid 函数", "B.ReLU 函数", "C.Tanh 函数", "D.Softplus 函数"],
-        "A", "逻辑回归", "中",
-        "Sigmoid 函数把任意实数映射到 (0,1)，输出即概率。"),
-    _ex("决策树中用于选择划分特征的主要指标是？",
-        ["A.信息增益（或基尼指数）", "B.梯度大小", "C.样本数量", "D.特征维度"],
-        "A", "决策树", "易",
-        "决策树按信息增益（或基尼指数）选择划分特征。"),
-    _ex("以下哪个不是常用的激活函数？",
-        ["A.ReLU", "B.Sigmoid", "C.恒等函数", "D.Tanh"],
-        "C", "神经网络", "中",
-        "ReLU/Sigmoid/Tanh 都是常用激活函数；恒等函数无非线性，不常用作隐藏层激活。"),
-    _ex("反向传播算法利用什么法则逐层计算梯度？",
-        ["A.链式法则", "B.贝叶斯公式", "C.泰勒公式", "D.牛顿-莱布尼茨公式"],
-        "A", "反向传播", "中",
-        "反向传播利用链式法则逐层计算梯度，与梯度下降配合更新参数。"),
-    _ex("深度学习中的“深度”主要指什么？",
-        ["A.网络层数多", "B.训练数据量大", "C.模型参数精度高", "D.训练时间久"],
-        "A", "深度学习基础", "易",
-        "深度指网络层数多（多层非线性变换）。"),
-    _ex("卷积神经网络中池化层的主要作用是？",
-        ["A.降低特征维度并增强平移不变性", "B.增加特征图数量",
-         "C.引入非线性激活", "D.计算损失函数"],
-        "A", "卷积神经网络", "中",
-        "池化层降低特征维度、保留主要特征并提升平移不变性。"),
-    _ex("以下哪个任务属于自然语言处理？",
-        ["A.情感分析", "B.图像分割", "C.语音降噪", "D.路径规划"],
-        "A", "自然语言处理", "中",
-        "情感分析是典型 NLP 任务；图像分割属 CV、语音降噪属语音、路径规划属搜索。"),
-]
-
-
 # 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19 扩展：多学习方向)
 def migrate_learn_schema(db) -> None:
     """Plan G 旧库迁移（幂等）：knowledge_points 加 course_id 列 → 回填「人工智能导论」→
@@ -329,31 +210,14 @@ def migrate_learn_schema(db) -> None:
     db.commit()
 
 
+# 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19 扩展：多学习方向)
 def seed_learn_demo(db) -> None:
-    """个性化学习演示数据：知识图谱（12 知识点+前置关系）+ 演示习题集（18 题，覆盖全部知识点）。幂等。"""
-    if db.query(KnowledgePoint).count() > 0:
-        print("知识图谱已有数据，跳过")
-    else:
-        kp_by_name = {}
-        for name, desc in LEARN_KPS:
-            kp = KnowledgePoint(name=name, description=desc)
-            db.add(kp)
-            db.flush()
-            kp_by_name[name] = kp.id
-        for kp_name, pre_name in LEARN_PREREQS:
-            db.add(KpPrereq(kp_id=kp_by_name[kp_name], prereq_kp_id=kp_by_name[pre_name]))
-        db.commit()
-        print("知识图谱已就绪：12 个知识点 + 前置关系")
-    course = db.query(Course).filter(Course.name == "人工智能导论").first()
-    if course is not None:
-        exists = (db.query(Lesson).filter(Lesson.title == "个性化学习演示习题",
-                                          Lesson.course_id == course.id).first())
-        if exists is None:
-            db.add(Lesson(course_id=course.id, title="个性化学习演示习题",
-                          lesson_type="exercises", content_json={"习题": LEARN_EXERCISES},
-                          version=1, created_by=course.owner_id))
-            db.commit()
-            print("个性化学习演示习题集已就绪：18 题（覆盖全部知识点）")
+    """个性化学习演示数据（Plan G）：3 个学习方向图谱 + 216 道手工种子题。幂等。"""
+    from scripts.seed_learn_bank import seed_learn_directions
+    result = seed_learn_directions(db)
+    for name, info in result.items():
+        print(f"学习方向「{name}」：{info['kps']} 知识点 + "
+              f"{info['prereqs']} 前置关系 + {info['exercises']} 题")
 
 
 if __name__ == "__main__":
