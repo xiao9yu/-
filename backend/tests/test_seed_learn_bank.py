@@ -10,9 +10,9 @@ from app.models.prep import Course, Lesson
 from app.models.user import Role, User
 from scripts.seed_learn_bank import (
     AI_EXERCISES, AI_KPS, AI_PREREQS, DS_EXERCISES, DS_KB_DOC, DS_KPS, DS_PREREQS,
+    ML_EXERCISES, ML_KPS, ML_KB_DOC,
     _seed_direction,
 )
-# 注意：ML_* 常量在 Task 3 才定义，本任务的 import 行不含 ML_*（Task 3 再扩展该行）。
 
 
 @pytest.fixture
@@ -83,3 +83,27 @@ def test_seed_direction_idempotent(db, course):
 def test_ds_kb_doc_covers_all_kps():
     for name, _ in DS_KPS:
         assert name in DS_KB_DOC
+
+
+def test_ml_direction_72_questions_distribution():
+    """ML 方向：12 知识点 × 易2/中2/难2 = 72 题。"""
+    assert len(ML_EXERCISES) == 72
+    assert {k for k, _ in ML_KPS} == {q["知识点"] for q in ML_EXERCISES}
+    dist = _distribution(ML_EXERCISES)
+    assert all(count == 2 for count in dist.values())
+    assert len(dist) == 36
+
+
+def test_ml_questions_wellformed():
+    stems = [q["题干"] for q in ML_EXERCISES]
+    assert len(stems) == len(set(stems))
+    for q in ML_EXERCISES:
+        assert len(q["选项"]) == 4
+        assert all(o[:2] in {f"{c}." for c in "ABCD"} for o in q["选项"])
+        assert q["答案"] in "ABCD"
+        assert q["解析"].strip() and q["难度"] in ("易", "中", "难")
+
+
+def test_ml_kb_doc_covers_all_kps():
+    for name, _ in ML_KPS:
+        assert name in ML_KB_DOC
