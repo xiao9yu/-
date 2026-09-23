@@ -9,19 +9,29 @@
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
 
 
 class KnowledgePoint(Base):
-    """知识点节点。name 与工单17 试题的"知识点"字段对齐（画像/练习按名关联）。"""
+    """知识点节点。name 与工单17 试题的"知识点"字段对齐（画像/练习按名关联）。
+
+    Plan G：新增 course_id 课程隔离（多学习方向）；同名知识点在不同课程互不影响。
+    唯一约束为表级 (course_id, name)；旧库迁移见 scripts/seed_demo_data.py 的
+    migrate_learn_schema（加列 + 回填 + 重建唯一索引）。course_id 为空 = 旧数据/未分类兜底。
+    """
 
     __tablename__ = "knowledge_points"
+    __table_args__ = (UniqueConstraint("course_id", "name", name="uq_kp_course_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    course_id: Mapped[int | None] = mapped_column(
+        ForeignKey("courses.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), index=True)
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)

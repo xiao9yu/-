@@ -184,3 +184,24 @@ def test_submit_accepts_full_option_text(db, user, seeded):
     result = learn_practice.submit_answer(
         user, seeded["lesson"].id, "梯度下降题0", "A.a", db, llm=FakeLLM())
     assert result["correct"] is True
+
+
+def test_next_question_prev_stem_avoids_immediate_repeat(db, user):
+    """prev_stem 非空且候选池 >1 时，下一题不与上一题同题干（解决"下一题还是同一道"）。"""
+    course = Course(name="课程", subject="x", owner_id=1)
+    db.add(course)
+    db.flush()
+    lesson = Lesson(course_id=course.id, title="习题集", lesson_type="exercises",
+                    content_json={"习题": [
+                        _question("题目甲", "A", kp="知识点A"),
+                        _question("题目乙", "A", kp="知识点A"),
+                    ]}, created_by=1)
+    db.add(lesson)
+    db.commit()
+    q1 = learn_practice.next_question(user, "知识点A", db, course_id=course.id,
+                                      prev_stem="题目甲")
+    assert q1["stem"] == "题目乙"
+    # 排除后只剩 1 题时回退全池（允许重复，防无题可出）
+    q2 = learn_practice.next_question(user, "知识点A", db, course_id=course.id,
+                                      prev_stem="题目乙")
+    assert q2["stem"] in ["题目甲", "题目乙"]

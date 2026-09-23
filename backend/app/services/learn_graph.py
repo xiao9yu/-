@@ -16,10 +16,16 @@ logger = logging.getLogger("learn_graph")
 MASTERY_THRESHOLD = 60.0  # 掌握度低于该阈值视为"未掌握"（推荐阈值）
 
 
-def build_graph(db: Session) -> nx.DiGraph:
-    """知识点前置关系 → 有向图：节点=知识点 id（带 name），边 prereq_kp_id → kp_id（先学→后学）。"""
+def build_graph(db: Session, course_id: int | None = None) -> nx.DiGraph:
+    """知识点前置关系 → 有向图：节点=知识点 id（带 name），边 prereq_kp_id → kp_id（先学→后学）。
+
+    Plan G：course_id 非空时只取该课程知识点与内部边（方向独立图谱）。
+    """
     g = nx.DiGraph()
-    for kp in db.query(KnowledgePoint).order_by(KnowledgePoint.id).all():
+    kp_query = db.query(KnowledgePoint)
+    if course_id is not None:
+        kp_query = kp_query.filter(KnowledgePoint.course_id == course_id)
+    for kp in kp_query.order_by(KnowledgePoint.id).all():
         g.add_node(kp.id, name=kp.name)
     for edge in db.query(KpPrereq).all():
         if edge.prereq_kp_id in g and edge.kp_id in g:
@@ -36,12 +42,14 @@ def topological_kps(graph: nx.DiGraph) -> list[int]:
         return sorted(graph.nodes)
 
 
-def recommend_path(mastery_map: dict[int, float], db: Session) -> dict:
+def recommend_path(mastery_map: dict[int, float], db: Session,
+                   course_id: int | None = None) -> dict:
     """推荐学习路径：未掌握知识点按拓扑序排列，逐项给出"为什么推荐学这个"。
 
     mastery_map: {kp_id: 当前掌握度（已含时间衰减）}；缺失视为 0（未掌握）。
+    course_id: 非空时只在指定课程图谱内推荐（Plan G 方向化）。
     """
-    graph = build_graph(db)
+    graph = build_graph(db, course_id=course_id)
     order = topological_kps(graph)
     names = {nid: graph.nodes[nid]["name"] for nid in graph.nodes}
     unmastered = [nid for nid in order if mastery_map.get(nid, 0.0) < MASTERY_THRESHOLD]

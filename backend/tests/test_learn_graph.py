@@ -80,3 +80,23 @@ def test_topological_cycle_tolerance(db):
     db.commit()
     g = build_graph(db)
     assert topological_kps(g) == sorted(g.nodes)
+
+
+def test_path_course_scoped(db):
+    """推荐路径只在指定课程图谱内拓扑排序，不混入其他课程知识点。"""
+    from app.models.prep import Course
+    ca = Course(name="课程A", subject="x", owner_id=1)
+    cb = Course(name="课程B", subject="x", owner_id=1)
+    db.add_all([ca, cb])
+    db.flush()
+    k1 = KnowledgePoint(name="前置", course_id=ca.id)
+    k2 = KnowledgePoint(name="后继", course_id=ca.id)
+    k3 = KnowledgePoint(name="异课", course_id=cb.id)
+    db.add_all([k1, k2, k3])
+    db.flush()
+    db.add(KpPrereq(kp_id=k2.id, prereq_kp_id=k1.id))
+    db.commit()
+    r = recommend_path({}, db, course_id=ca.id)
+    names = [p["name"] for p in r["path"]]
+    assert set(names) == {"前置", "后继"}   # 异课知识点不出现
+    assert names == ["前置", "后继"]        # 拓扑序：前置先学

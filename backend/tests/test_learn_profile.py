@@ -171,3 +171,18 @@ def test_initialized_requires_diagnostic_or_import(db, user):
     assert learn_profile.get_profile(user, db)["initialized"] is False
     learn_profile.init_from_import(user, [kp.name], 70.0, db)
     assert learn_profile.get_profile(user, db)["initialized"] is True
+
+
+def test_profile_course_scoped_and_per_direction_init(db, user):
+    """画像按课程过滤：方向 A 初始化不影响方向 B；kps 只含本课程知识点。"""
+    from app.models.prep import Course
+    ca = Course(name="课程A", subject="x", owner_id=1)
+    cb = Course(name="课程B", subject="x", owner_id=1)
+    db.add_all([ca, cb])
+    db.flush()
+    learn_profile.init_from_import(user, ["知识点A"], 60, db, course_id=ca.id)
+    pa = learn_profile.get_profile(user, db, course_id=ca.id)
+    pb = learn_profile.get_profile(user, db, course_id=cb.id)
+    assert pa["initialized"] is True
+    assert [k["name"] for k in pa["kps"]] == ["知识点A"]
+    assert pb["initialized"] is False  # B 方向未初始化

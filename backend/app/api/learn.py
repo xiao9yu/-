@@ -51,26 +51,31 @@ def list_learn_courses(user: User = Depends(_student), db: Session = Depends(get
 
 
 @router.get("/profile")
-def profile(user: User = Depends(_student), db: Session = Depends(get_db)):
-    return learn_profile.get_profile(user, db)
+def profile(course_id: int | None = None, user: User = Depends(_student),
+            db: Session = Depends(get_db)):
+    return learn_profile.get_profile(user, db, course_id=course_id)
 
 
 @router.get("/path")
-def path(user: User = Depends(_student), db: Session = Depends(get_db)):
-    mastery_map = {k["kp_id"]: k["mastery"] for k in learn_profile.get_profile(user, db)["kps"]}
+def path(course_id: int | None = None, user: User = Depends(_student),
+         db: Session = Depends(get_db)):
+    mastery_map = {k["kp_id"]: k["mastery"]
+                   for k in learn_profile.get_profile(user, db, course_id=course_id)["kps"]}
     if not mastery_map:
         raise BizError(400, "尚未初始化画像，请先完成诊断测试或导入历史成绩")
-    return learn_graph.recommend_path(mastery_map, db)
+    return learn_graph.recommend_path(mastery_map, db, course_id=course_id)
 
 
 @router.get("/tasks")
-def tasks(user: User = Depends(_student), db: Session = Depends(get_db)):
+def tasks(course_id: int | None = None, user: User = Depends(_student),
+          db: Session = Depends(get_db)):
     """今日任务：推荐路径前 2 个未掌握知识点 + 各配一道推荐练习题。"""
-    mastery_map = {k["kp_id"]: k["mastery"] for k in learn_profile.get_profile(user, db)["kps"]}
-    result = learn_graph.recommend_path(mastery_map, db)
+    mastery_map = {k["kp_id"]: k["mastery"]
+                   for k in learn_profile.get_profile(user, db, course_id=course_id)["kps"]}
+    result = learn_graph.recommend_path(mastery_map, db, course_id=course_id)
     out = []
     for item in result["path"][:2]:
-        q = learn_practice.next_question(user, item["name"], db)
+        q = learn_practice.next_question(user, item["name"], db, course_id=course_id)
         out.append({"kp_id": item["kp_id"], "name": item["name"],
                     "mastery": item["mastery"], "why": item["why"], "question": q})
     return out
@@ -105,9 +110,11 @@ def submit_diagnostic(data: DiagnosticIn, user: User = Depends(_student),
             q = learn_practice.find_question(db, a.get("lesson_id"), a.get("stem") or "")
         except BizError:
             raise BizError(400, "答题与题库不匹配，请重新开始诊断测试")
+        lesson = db.get(Lesson, a.get("lesson_id"))
         stats.append({
             "knowledge_point": q.get("知识点") or "未分类知识点",
             "correct": learn_practice.check_answer(q, a.get("answer")),
+            "course_id": lesson.course_id if lesson is not None else None,
         })
     return learn_profile.init_from_diagnostic(user, stats, db)
 
@@ -120,7 +127,8 @@ def import_score(data: ImportIn, user: User = Depends(_student), db: Session = D
            if q.get("知识点")}
     if not kps:
         raise BizError(400, "该课程暂无试题，无法初始化画像")
-    return learn_profile.init_from_import(user, sorted(kps), data.score, db)
+    return learn_profile.init_from_import(user, sorted(kps), data.score, db,
+                                          course_id=data.course_id)
 
 
 # ---------- 自适应练习 ----------
@@ -128,10 +136,12 @@ def import_score(data: ImportIn, user: User = Depends(_student), db: Session = D
 
 @router.get("/practice")
 def practice(kp: str = Query(...), course_id: int | None = None,
+             prev_stem: str | None = None,
              user: User = Depends(_student), db: Session = Depends(get_db)):
     if not kp.strip():
         raise BizError(400, "知识点不能为空")
-    return learn_practice.next_question(user, kp.strip(), db, course_id=course_id)
+    return learn_practice.next_question(user, kp.strip(), db,
+                                        course_id=course_id, prev_stem=prev_stem)
 
 
 @router.post("/practice/submit")
@@ -145,12 +155,13 @@ def practice_submit(data: SubmitIn, user: User = Depends(_student), db: Session 
 
 
 @router.get("/wrongbook")
-def wrongbook(user: User = Depends(_student), db: Session = Depends(get_db)):
+def wrongbook(course_id: int | None = None, user: User = Depends(_student),
+              db: Session = Depends(get_db)):
     return [{"id": w.id, "stem": w.stem, "options": w.options, "user_answer": w.user_answer,
              "correct_answer": w.correct_answer, "knowledge_point": w.knowledge_point,
              "difficulty": w.difficulty, "analysis": w.analysis, "error_reason": w.error_reason,
              "variants": w.variants, "status": w.status, "created_at": w.created_at.isoformat()}
-            for w in learn_wrongbook.list_wrongbook(user, db)]
+            for w in learn_wrongbook.list_wrongbook(user, db, course_id=course_id)]
 
 
 @router.post("/wrongbook/{wq_id}/regenerate")

@@ -56,11 +56,18 @@ def ensure_profile(user: User, db: Session) -> StudentProfile:
     return profile
 
 
-def get_or_create_kp(db: Session, name: str) -> KnowledgePoint:
-    """按名取知识点；试题/提问引用了图谱外的知识点时自动登记为孤立节点（容错）。"""
-    kp = db.query(KnowledgePoint).filter(KnowledgePoint.name == name).first()
+def get_or_create_kp(db: Session, name: str, course_id: int | None = None) -> KnowledgePoint:
+    """按 (课程, 名) 取知识点；试题/提问引用了图谱外的知识点时自动登记为孤立节点（容错）。
+
+    Plan G：course_id 非空时按课程隔离查找（多方向同名知识点互不影响）；空 = 全局兜底
+    （旧调用/未分类场景，兼容旧数据）。
+    """
+    query = db.query(KnowledgePoint).filter(KnowledgePoint.name == name)
+    if course_id is not None:
+        query = query.filter(KnowledgePoint.course_id == course_id)
+    kp = query.first()
     if kp is None:
-        kp = KnowledgePoint(name=name, description="（由学习行为自动登记）")
+        kp = KnowledgePoint(name=name, course_id=course_id, description="（由学习行为自动登记）")
         db.add(kp)
         db.flush()
     return kp
@@ -88,17 +95,18 @@ def apply_event(user: User, kp: KnowledgePoint, delta: float, db: Session, *,
 
 
 def init_from_diagnostic(user: User, answers: list[dict], db: Session) -> dict:
-    """诊断测试初始化画像：answers = [{"knowledge_point": str, "correct": bool}]。
+    """诊断测试初始化画像：answers = [{"knowledge_point": str, "correct": bool, "course_id"?: int}]。
 
-    每知识点掌握度 = 正确率 ×100 直接赋值（初始不叠加、不衰减）。
+    每知识点掌握度 = 正确率 ×100 直接赋值（初始不叠加、不衰减）。course_id 用于
+    多方向同名知识点隔离（Plan G）。
     """
-    stats: dict[str, list] = {}
+    stats: dict[tuple, list] = {}
     for a in answers:
-        stats.setdefault(a["knowledge_point"], []).append(bool(a["correct"]))
+        stats.setdefault((a["knowledge_point"], a.get("course_id")), []).append(bool(a["correct"]))
     profile = ensure_profile(user, db)
     now = _now()
-    for name, results in stats.items():
-        kp = get_or_create_kp(db, name)
+    for (name, cid), results in stats.items():
+        kp = get_or_create_kp(db, name, cid)
         mastery = round(MASTERY_MAX * sum(results) / len(results), 1)
         row = (db.query(ProfileKp)
                .filter(ProfileKp.profile_id == profile.id, ProfileKp.kp_id == kp.id).first())
@@ -117,8 +125,12 @@ def init_from_diagnostic(user: User, answers: list[dict], db: Session) -> dict:
     return {"initialized": True, "kp_count": len(stats)}
 
 
-def init_from_import(user: User, kp_names: list[str], score: float, db: Session) -> dict:
-    """导入历史成绩：课程级成绩均匀初始化该课程试题涉及的知识点（口径见文档）。"""
+def init_from_import(user: User, kp_names: list[str], score: float, db: Session,
+                     course_id: int | None = None) -> dict:
+    """导入历史成绩：课程级成绩均匀初始化该课程试题涉及的知识点（口径见文档）。
+
+    Plan G：course_id 用于同名知识点课程隔离（该课程试题的知识点归属该课程图谱）。
+    """
     kp_names = sorted({n for n in kp_names if n})
     if not kp_names:
         raise BizError(400, "该课程暂无试题，无法初始化画像")
@@ -126,7 +138,7 @@ def init_from_import(user: User, kp_names: list[str], score: float, db: Session)
     profile = ensure_profile(user, db)
     now = _now()
     for name in kp_names:
-        kp = get_or_create_kp(db, name)
+        kp = get_or_create_kp(db, name, course_id)
         row = (db.query(ProfileKp)
                .filter(ProfileKp.profile_id == profile.id, ProfileKp.kp_id == kp.id).first())
         if row is None:
@@ -153,8 +165,11 @@ def record_ask_events(user: User, question: str, db: Session) -> int:
     return len(hits)
 
 
-def get_profile(user: User, db: Session) -> dict:
-    """画像雷达数据：全图谱知识点 + 掌握度（无记录=0，已含时间衰减）。
+def get_profile(user: User, db: Session, course_id: int | None = None) -> dict:
+    """画像雷达数据：知识点 + 掌握度（无记录=0，已含时间衰减）。
+
+    Plan G：course_id 非空时只返回该课程知识点，且"是否已初始化"只看该课程内的
+    diagnostic/import 事件（方向独立画像）；空 = 全部课程（旧调用兼容）。
 
     初始化判定：存在 diagnostic/import 事件才算已初始化（评审修复）——
     仅练习/提问事件也会产生画像行，但按模型文档语义"未做诊断测试/导入"不算初始化，
@@ -163,19 +178,25 @@ def get_profile(user: User, db: Session) -> dict:
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if profile is None:
         return {"initialized": False, "kps": [], "created_at": None}
-    has_init = (db.query(LearnEvent)
-                .filter(LearnEvent.user_id == user.id,
-                        LearnEvent.event_type.in_(["diagnostic", "import"])).count() > 0)
-    if not has_init:
+    kp_query = db.query(KnowledgePoint)
+    if course_id is not None:
+        kp_query = kp_query.filter(KnowledgePoint.course_id == course_id)
+    kps = kp_query.order_by(KnowledgePoint.id).all()
+    init_query = (db.query(LearnEvent)
+                  .filter(LearnEvent.user_id == user.id,
+                          LearnEvent.event_type.in_(["diagnostic", "import"])))
+    if course_id is not None:
+        init_query = init_query.filter(LearnEvent.kp_id.in_([k.id for k in kps] or [0]))
+    if init_query.count() == 0:
         return {"initialized": False, "kps": [], "created_at": None}
     now = _now()
     rows = {r.kp_id: r for r in db.query(ProfileKp).filter(ProfileKp.profile_id == profile.id).all()}
-    kps = []
-    for kp in db.query(KnowledgePoint).order_by(KnowledgePoint.id).all():
+    out = []
+    for kp in kps:
         row = rows.get(kp.id)
         mastery = round(_decayed(row.mastery, row.last_updated, now), 2) if row else 0.0
-        kps.append({"kp_id": kp.id, "name": kp.name, "mastery": mastery})
-    return {"initialized": True, "kps": kps,
+        out.append({"kp_id": kp.id, "name": kp.name, "mastery": mastery})
+    return {"initialized": True, "kps": out,
             "created_at": profile.created_at.replace(tzinfo=None).isoformat()}
 
 

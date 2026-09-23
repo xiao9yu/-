@@ -259,3 +259,44 @@ def test_kb_ask_records_ask_event(env, monkeypatch):
                                  embedder=FakeEmbedder(), vector_store=FakeStore(),
                                  reranker=None, gateway=FakeAskGateway())
     assert any("event: done" in b for b in list(gen3))
+
+
+def test_diagnostic_course_scoped(env):
+    client, headers, *_ = env
+    # 指定其他课程 → 无试题 404
+    resp = client.get("/api/learn/diagnostic?course_id=999999", headers=headers["student"])
+    assert resp.status_code == 404
+
+
+def test_practice_prev_stem(env):
+    client, headers, _, _, course = env
+    url = (f"/api/learn/practice?kp=梯度下降&course_id={course.id}"
+           f"&prev_stem=诊断梯度下降题0")
+    resp = client.get(url, headers=headers["student"])
+    assert resp.status_code == 200
+    assert resp.json()["stem"] != "诊断梯度下降题0"
+
+
+def test_wrongbook_course_filter(env):
+    client, headers, _, Session, course = env
+    from app.models.learn import KnowledgePoint, WrongQuestion
+    s = Session()
+    student = s.query(User).filter(User.username == "student").first()
+    course_b = Course(name="课程B", subject="x", owner_id=1)
+    s.add(course_b)
+    s.flush()
+    s.add_all([KnowledgePoint(name="决策树", course_id=course.id),
+               KnowledgePoint(name="决策树", course_id=course_b.id)])
+    s.flush()
+    s.add_all([
+        WrongQuestion(user_id=student.id, stem="错题A", user_answer="B",
+                      correct_answer="A", knowledge_point="决策树"),
+        WrongQuestion(user_id=student.id, stem="错题B", user_answer="B",
+                      correct_answer="A", knowledge_point="聚类"),
+    ])
+    s.commit()
+    resp = client.get(f"/api/learn/wrongbook?course_id={course.id}",
+                      headers=headers["student"])
+    assert resp.status_code == 200
+    assert [w["stem"] for w in resp.json()] == ["错题A"]
+    s.close()

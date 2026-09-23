@@ -157,16 +157,25 @@ def _adjust_difficulty(row: ProfileKp, acc: float) -> str:
     return row.difficulty
 
 
-def next_question(user: User, kp: str, db: Session, *, course_id: int | None = None) -> dict:
-    """下一道练习题：按当前难度抽题（该难度无题则放宽到该知识点全部题）。"""
-    kp_row = learn_profile.get_or_create_kp(db, kp)
+def next_question(user: User, kp: str, db: Session, *, course_id: int | None = None,
+                  prev_stem: str | None = None) -> dict:
+    """下一道练习题：按当前难度抽题（该难度无题则放宽到该知识点全部题）。
+
+    Plan G：course_id 用于知识点课程隔离与抽题范围；prev_stem 非空且候选池 >1 时
+    排除与上一题同题干的题（解决"下一题还是同一道"）。
+    """
+    kp_row = learn_profile.get_or_create_kp(db, kp, course_id)
     row = _profile_row(user, kp_row, db)
     questions = collect_questions(db, course_id=course_id, kp=kp, difficulty=row.difficulty)
     if not questions:
         questions = collect_questions(db, course_id=course_id, kp=kp)
     if not questions:
         raise BizError(404, f"知识点「{kp}」暂无练习题，请先在智能备课模块生成对应习题")
-    q = random.choice(questions)
+    if prev_stem and len(questions) > 1:
+        pool = [q for q in questions if q["题干"] != prev_stem] or questions
+    else:
+        pool = questions
+    q = random.choice(pool)
     return {"lesson_id": q["lesson_id"], "stem": q["题干"], "options": q["选项"],
             "knowledge_point": q["知识点"], "difficulty": q.get("难度", row.difficulty)}
 
@@ -177,7 +186,9 @@ def submit_answer(user: User, lesson_id: int, stem: str, answer: str,
     q = find_question(db, lesson_id, stem)
     correct = check_answer(q, answer)
     kp_name = q.get("知识点") or "未分类知识点"
-    kp = learn_profile.get_or_create_kp(db, kp_name)
+    lesson = db.get(Lesson, lesson_id)
+    kp = learn_profile.get_or_create_kp(db, kp_name,
+                                        lesson.course_id if lesson is not None else None)
     delta = (learn_profile.DELTA_PRACTICE_CORRECT if correct
              else learn_profile.DELTA_PRACTICE_WRONG)
     learn_profile.apply_event(user, kp, delta, db, event_type="practice",

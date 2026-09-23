@@ -10,7 +10,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..core.exceptions import BizError
-from ..models.learn import WrongQuestion
+from ..models.learn import KnowledgePoint, WrongQuestion
 from ..models.user import User
 from .llm_gateway import LLMGateway, LLMError, get_gateway
 
@@ -90,10 +90,14 @@ def add_wrong_question(user: User, *, stem: str, options: list, user_answer: str
     return wq
 
 
-def list_wrongbook(user: User, db: Session) -> list[WrongQuestion]:
-    """本人错题本（倒序）。"""
-    return (db.query(WrongQuestion).filter(WrongQuestion.user_id == user.id)
-            .order_by(WrongQuestion.id.desc()).all())
+def list_wrongbook(user: User, db: Session, course_id: int | None = None) -> list[WrongQuestion]:
+    """本人错题本（倒序）。Plan G：course_id 非空时只返回该课程知识点对应的错题。"""
+    query = db.query(WrongQuestion).filter(WrongQuestion.user_id == user.id)
+    if course_id is not None:
+        names = [kp.name for kp in db.query(KnowledgePoint)
+                 .filter(KnowledgePoint.course_id == course_id).all()]
+        query = query.filter(WrongQuestion.knowledge_point.in_(names))
+    return query.order_by(WrongQuestion.id.desc()).all()
 
 
 def regenerate(user: User, wq_id: int, db: Session, llm: LLMGateway | None = None) -> WrongQuestion:
