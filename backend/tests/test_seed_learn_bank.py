@@ -107,3 +107,35 @@ def test_ml_questions_wellformed():
 def test_ml_kb_doc_covers_all_kps():
     for name, _ in ML_KPS:
         assert name in ML_KB_DOC
+
+
+def test_ai_direction_72_questions_distribution():
+    """AI 方向补齐后：12 知识点 × 易2/中2/难2 = 72 题。"""
+    assert len(AI_EXERCISES) == 72
+    assert {k for k, _ in AI_KPS} == {q["知识点"] for q in AI_EXERCISES}
+    dist = _distribution(AI_EXERCISES)
+    assert all(count == 2 for count in dist.values())
+    assert len(dist) == 36
+
+
+def test_ai_questions_wellformed():
+    stems = [q["题干"] for q in AI_EXERCISES]
+    assert len(stems) == len(set(stems))
+    for q in AI_EXERCISES:
+        assert len(q["选项"]) == 4
+        assert all(o[:2] in {f"{c}." for c in "ABCD"} for o in q["选项"])
+        assert q["答案"] in "ABCD"
+        assert q["解析"].strip() and q["难度"] in ("易", "中", "难")
+
+
+def test_seed_direction_updates_lesson_when_count_differs(db, course):
+    """同课程 lesson 已存在但题数不同（AI 18→72）时 content_json 整体更新。"""
+    _seed_direction(db, course, AI_KPS, AI_PREREQS, AI_EXERCISES[:18],
+                    "个性化学习演示习题")
+    lesson = db.query(Lesson).filter(Lesson.course_id == course.id).first()
+    assert lesson is not None and len(lesson.content_json["习题"]) == 18
+    _seed_direction(db, course, AI_KPS, AI_PREREQS, AI_EXERCISES,
+                    "个性化学习演示习题")
+    assert db.query(Lesson).filter(Lesson.course_id == course.id).count() == 1
+    lesson = db.query(Lesson).filter(Lesson.course_id == course.id).first()
+    assert len(lesson.content_json["习题"]) == 72

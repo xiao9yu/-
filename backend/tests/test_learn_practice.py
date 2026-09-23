@@ -205,3 +205,11 @@ def test_next_question_prev_stem_avoids_immediate_repeat(db, user):
     q2 = learn_practice.next_question(user, "知识点A", db, course_id=course.id,
                                       prev_stem="题目乙")
     assert q2["stem"] in ["题目甲", "题目乙"]
+
+
+def test_monthly_exam_questions_auto_enter_practice_pool(db, seeded):
+    """三通道①：月考题选择题自动入练习池（既有链路钉住，简答题被过滤）。"""
+    qs = learn_practice.collect_questions(db, course_id=seeded["course"].id)
+    assert "月考梯度下降题" in [q["题干"] for q in qs]
+    diag = learn_practice.diagnostic_questions(db, course_id=seeded["course"].id)
+    assert any(q["stem"] == "月考梯度下降题" for q in diag)
