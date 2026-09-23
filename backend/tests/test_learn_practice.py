@@ -235,6 +235,9 @@ def test_next_question_prev_stem_avoids_immediate_repeat(db, user):
 def test_monthly_exam_questions_auto_enter_practice_pool(db, seeded):
     """三通道①：月考题选择题自动入练习池（既有链路钉住，简答题被过滤）。"""
     qs = learn_practice.collect_questions(db, course_id=seeded["course"].id)
-    assert "月考梯度下降题" in [q["题干"] for q in qs]
+    stems = [q["题干"] for q in qs]
+    assert "月考梯度下降题" in stems
+    assert "简述梯度下降（无选项）" not in stems  # 简答题无选项，不入练习池
     diag = learn_practice.diagnostic_questions(db, course_id=seeded["course"].id)
     assert any(q["stem"] == "月考梯度下降题" for q in diag)
+    assert all(q["stem"] != "简述梯度下降（无选项）" for q in diag)

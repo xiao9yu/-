@@ -104,6 +104,19 @@ def test_ml_questions_wellformed():
         assert q["解析"].strip() and q["难度"] in ("易", "中", "难")
 
 
+def test_answer_letters_no_single_letter_sweep():
+    """防博弈守卫（工单 19 终审整改）：三个方向各 72 题答案须覆盖 A/B/C/D 四字母、
+    每字母约 18 题且无单字母占比过半——不存在"全选同一字母可全对"的方向。"""
+    from collections import Counter
+    for name, exercises in (("AI", AI_EXERCISES), ("DS", DS_EXERCISES), ("ML", ML_EXERCISES)):
+        counts = Counter(q["答案"] for q in exercises)
+        assert set(counts) == {"A", "B", "C", "D"}, f"{name} 答案未覆盖四字母：{dict(counts)}"
+        assert max(counts.values()) <= len(exercises) // 2, \
+            f"{name} 单字母占比过半：{dict(counts)}"
+        assert all(16 <= c <= 20 for c in counts.values()), \
+            f"{name} 答案分布不均（每字母应约 18 题）：{dict(counts)}"
+
+
 def test_ml_kb_doc_covers_all_kps():
     for name, _ in ML_KPS:
         assert name in ML_KB_DOC
