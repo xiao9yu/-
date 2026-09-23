@@ -17,7 +17,7 @@ from ..db import get_db
 from ..models.file import FileRecord
 from ..models.prep import Citation, Course, CourseFile, Lesson, MediaFile, VersionSnapshot
 from ..models.user import Role, User
-from ..services import prep_export, prep_generator, prep_resources
+from ..services import kb_service, prep_export, prep_generator, prep_resources
 from ..services.embeddings import EmbedderError
 from ..services.file_service import delete_file
 from ..services.llm_gateway import LLMError
@@ -155,7 +155,7 @@ def search_course_resources(course_id: int, q: str = Query(...), top_k: int = 5,
 
 
 class GenerateIn(BaseModel):
-    type: str                     # plan|cw|exercises|case|exam
+    type: str                     # plan|cw|exercises|case|exam|kb_exercises
     chapter: str = ""
     objectives: str = ""
     hours: str = ""
@@ -163,6 +163,7 @@ class GenerateIn(BaseModel):
     count: int = 5
     distribution: list[dict] = []  # 月考题：[{"知识点": str, "占比": str}]
     query: str = ""               # 非空时先检索校本资源拼入 prompt
+    difficulty: str = ""          # kb_exercises：易/中/难；空串 = 易中难混合
 
 
 def _collect_resources(course_id: int, query: str, db: Session) -> tuple[str, list[dict]]:
@@ -179,12 +180,56 @@ def _collect_resources(course_id: int, query: str, db: Session) -> tuple[str, li
           "excerpt": h["chunk"].text[:200]} for i, h in enumerate(hits, start=1)]
 
 
+def _generate_kb_exercises(course: Course, data: GenerateIn, user: User, db: Session) -> dict:
+    """知识库出题（三通道②）：知识库混合检索 → LLM 仅依据资料出题 → 校验 → 追加进课程习题集。
+
+    检索空手 → BizError 404；LLM/校验失败由上层统一转 502。生成即入学习题库。
+    重复生成时同题干题目跳过（幂等追加）。
+    """
+    search_q = data.query.strip() or "、".join(data.knowledge_points) or course.name
+    try:
+        hits = kb_service.retrieve_chunks(user, search_q, db, top_k=8)
+    except EmbedderError as exc:
+        raise BizError(502, str(exc)) from exc
+    if not hits:
+        raise BizError(404, "知识库中未检索到该课程相关资料，请先上传文档")
+    material = "\n".join(f"【{h.chunk.source}】\n{h.chunk.text[:600]}" for h in hits)
+    content = prep_generator.generate_kb_exercises(
+        course.name, course.subject, data.chapter, data.knowledge_points,
+        data.count, data.difficulty, material)
+    prep_generator.validate_exercises(content)
+    title = f"{course.name}知识库生成习题"
+    lesson = (db.query(Lesson).filter(Lesson.course_id == course.id,
+                                      Lesson.title == title).first())
+    existing = (lesson.content_json or {}).get("习题", []) if lesson is not None else []
+    stems = {q.get("题干") for q in existing}
+    added = [q for q in content["习题"] if q.get("题干") not in stems]
+    if lesson is None:
+        lesson = Lesson(course_id=course.id, title=title, lesson_type="exercises",
+                        content_json={"习题": added}, created_by=user.id)
+        db.add(lesson)
+        db.flush()
+        _snapshot(lesson, user, db)
+    elif added:
+        lesson.version += 1
+        lesson.content_json = {"习题": existing + added}
+        _snapshot(lesson, user, db)
+    db.commit()
+    db.refresh(lesson)
+    return {"content": content,
+            "lesson": {"lesson_id": lesson.id, "title": title,
+                       "added": len(added), "total": len(existing) + len(added)}}
+
+
 @router.post("/courses/{course_id}/generate")
 def generate(course_id: int, data: GenerateIn,
              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     course = _get_course(course_id, user, db)
-    resources, citations = _collect_resources(course_id, data.query, db)
     try:
+        if data.type == "kb_exercises":
+            saved = _generate_kb_exercises(course, data, user, db)
+            return {"type": data.type, "content": saved["content"], "lesson": saved["lesson"]}
+        resources, citations = _collect_resources(course_id, data.query, db)
         if data.type == "plan":
             content = prep_generator.generate_lesson_plan(
                 course.name, course.subject, data.chapter, data.objectives, data.hours, resources)
@@ -206,7 +251,7 @@ def generate(course_id: int, data: GenerateIn,
                 course.name, course.subject, data.distribution or [{"知识点": data.chapter, "占比": "100%"}], resources)
             prep_generator.validate_exam(content)
         else:
-            raise BizError(400, "不支持的生成类型（plan/cw/exercises/case/exam）")
+            raise BizError(400, "不支持的生成类型（plan/cw/exercises/case/exam/kb_exercises）")
     except LLMError as exc:
         # DeepSeek key 未配置/调用失败 → 友好 502（评审修复：原先落通用 500）
         raise BizError(502, str(exc)) from exc

@@ -296,6 +296,19 @@ def _load_collections(user: User, db: Session) -> list[KBCollection]:
     return cols
 
 
+def retrieve_chunks(user: User, query: str, db: Session, *, top_k: int = 8,
+                    vector_store=None, embedder=None, reranker=None) -> list:
+    """混合检索知识库文本块（公共库+本人私有库）：备课「从知识库生成习题」复用问答检索路径。
+
+    与 answer_events 相同的显式解析约定：经本模块 get_embedder/get_vector_store 取值后
+    传入 hybrid_retrieve，使 monkeypatch 对检索路径生效（Plan C Task 6 Minor #1）。
+    """
+    emb = embedder or get_embedder()
+    vs = vector_store or get_vector_store()
+    return hybrid_retrieve(query, _load_collections(user, db), top_k=top_k,
+                           vector_store=vs, embedder=emb, rerank=reranker)
+
+
 # ---------------- 一致性自检与修复（向量库 ↔ kb_chunks） ----------------
 
 def _enumerate_scope(vs, name: str) -> set[str] | None:
