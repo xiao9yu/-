@@ -1,11 +1,22 @@
 <!-- 工单编号：人工智能NLP-Agent数字人项目-教育智能体-个性化学习推荐任务(19) -->
 <template>
   <div>
+    <!-- 学习方向切换（Plan G：三方向联动全部面板） -->
+    <div v-if="learnCourses.length" class="direction-bar">
+      <span class="direction-label">学习方向</span>
+      <el-select v-model="currentCourseId" style="width: 240px" @change="onSwitchDirection">
+        <el-option v-for="c in learnCourses" :key="c.id" :label="c.name" :value="c.id" />
+      </el-select>
+    </div>
+    <el-card v-if="!learnCourses.length">
+      <el-empty description="暂无学习方向（需教师先在备课模块创建含习题的课程）" />
+    </el-card>
+
     <!-- 未初始化画像：引导 -->
-    <el-card v-if="profile && !profile.initialized">
-      <el-empty description="还没有学习画像，先完成诊断测试或导入历史成绩">
+    <el-card v-if="learnCourses.length && profile && !profile.initialized">
+      <el-empty description="还没有该方向的学习画像，先完成诊断测试或导入历史成绩">
         <el-button type="primary" @click="startDiagnostic">开始诊断测试</el-button>
-        <el-button @click="importVisible = true">导入历史成绩</el-button>
+        <el-button @click="openImport">导入历史成绩</el-button>
       </el-empty>
     </el-card>
 
@@ -199,6 +210,11 @@ const similar = ref<SimilarStudent[]>([])
 const wrongbook = ref<WrongQuestionItem[]>([])
 const activeTab = ref('dash')
 
+// 学习方向（Plan G：三方向联动全部面板）
+const learnCourses = ref<{ id: number; name: string }[]>([])
+const currentCourseId = ref<number | null>(null)
+const lastStem = ref('')
+
 // 诊断测试
 const diagnosing = ref(false)
 const diagQuestions = ref<Question[]>([])
@@ -253,9 +269,13 @@ function renderRadar() {
 }
 
 async function loadDashboard() {
-  profile.value = await getProfile()
+  profile.value = await getProfile(currentCourseId.value ?? undefined)
   if (!profile.value.initialized) return
-  const [p, t, s] = await Promise.all([getPath(), getTasks(), getSimilar()])
+  const [p, t, s] = await Promise.all([
+    getPath(currentCourseId.value ?? undefined),
+    getTasks(currentCourseId.value ?? undefined),
+    getSimilar(),
+  ])
   path.value = p.path
   tasks.value = t
   similar.value = s
@@ -267,13 +287,35 @@ async function loadDashboard() {
 }
 
 async function loadWrongbook() {
-  wrongbook.value = await listWrongbook()
+  wrongbook.value = await listWrongbook(currentCourseId.value ?? undefined)
 }
 
 async function startDiagnostic() {
-  const data = await getDiagnostic()
-  diagQuestions.value = data.questions
-  diagnosing.value = true
+  try {
+    const data = await getDiagnostic(currentCourseId.value ?? undefined)
+    diagQuestions.value = data.questions
+    diagnosing.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '暂无可用试题，请先由教师在智能备课模块生成习题')
+  }
+}
+
+async function onSwitchDirection() {
+  // 切换方向重置全部面板状态（诊断/练习/结果），避免跨方向残留
+  diagnosing.value = false
+  diagQuestions.value = []
+  currentQuestion.value = null
+  result.value = null
+  selectedAnswer.value = ''
+  practiceKp.value = ''
+  lastStem.value = ''
+  await loadDashboard()
+  await loadWrongbook()
+}
+
+function openImport() {
+  importForm.course_id = currentCourseId.value ?? undefined
+  importVisible.value = true
 }
 
 async function onSubmitDiagnostic() {
@@ -319,7 +361,9 @@ async function onNextQuestion() {
   result.value = null
   selectedAnswer.value = ''
   try {
-    currentQuestion.value = await getPractice(practiceKp.value)
+    currentQuestion.value = await getPractice(
+      practiceKp.value, currentCourseId.value ?? undefined, lastStem.value || undefined)
+    if (currentQuestion.value) lastStem.value = currentQuestion.value.stem
   } catch (e) {
     currentQuestion.value = null
   } finally {
@@ -352,9 +396,19 @@ async function onRegenerate(w: WrongQuestionItem) {
 }
 
 onMounted(async () => {
-  await loadDashboard()
-  await loadWrongbook()
+  learnCourses.value = await listLearnCourses()
+  courses.value = learnCourses.value
+  if (learnCourses.value.length) {
+    currentCourseId.value = learnCourses.value[0].id
+    await loadDashboard()
+    await loadWrongbook()
+  }
 })
 watch(profile, renderRadar)
 onBeforeUnmount(() => { radarChart?.dispose(); radarChart = null })
 </script>
+
+<style scoped>
+.direction-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.direction-label { font-size: 14px; font-weight: 600; color: var(--text-1); }
+</style>

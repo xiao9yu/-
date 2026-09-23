@@ -20,26 +20,29 @@ export interface WrongQuestionItem {
   variants: WrongVariant[]; status: string; created_at: string
 }
 
-export const getProfile = () => http.get('/learn/profile') as Promise<ProfileData>
+export const getProfile = (courseId?: number) =>
+  http.get('/learn/profile', { params: { course_id: courseId } }) as Promise<ProfileData>
 export const listLearnCourses = () =>
   http.get('/learn/courses') as Promise<{ id: number; name: string }[]>
-export const getDiagnostic = () =>
-  http.get('/learn/diagnostic') as Promise<{ questions: Question[]; count: number }>
+export const getDiagnostic = (courseId?: number) =>
+  http.get('/learn/diagnostic', { params: { course_id: courseId } }) as Promise<{ questions: Question[]; count: number }>
 export const submitDiagnostic = (answers: { lesson_id: number; stem: string; answer: string }[]) =>
   http.post('/learn/diagnostic', { answers }) as Promise<{ initialized: boolean; kp_count: number }>
 export const importScore = (courseId: number, score: number) =>
   http.post('/learn/import', { course_id: courseId, score }) as Promise<{ initialized: boolean; kp_count: number }>
-export const getPath = () =>
-  http.get('/learn/path') as Promise<{ path: PathItem[]; mastered: number; unmastered: number }>
-export const getTasks = () => http.get('/learn/tasks') as Promise<TaskItem[]>
+export const getPath = (courseId?: number) =>
+  http.get('/learn/path', { params: { course_id: courseId } }) as Promise<{ path: PathItem[]; mastered: number; unmastered: number }>
+export const getTasks = (courseId?: number) =>
+  http.get('/learn/tasks', { params: { course_id: courseId } }) as Promise<TaskItem[]>
 export const getSimilar = () => http.get('/learn/similar') as Promise<SimilarStudent[]>
-export const getPractice = (kp: string, courseId?: number) =>
-  http.get('/learn/practice', { params: { kp, course_id: courseId } }) as Promise<Question>
+export const getPractice = (kp: string, courseId?: number, prevStem?: string) =>
+  http.get('/learn/practice', { params: { kp, course_id: courseId, prev_stem: prevStem } }) as Promise<Question>
 // 答错同步生成 AI 解析（DeepSeek 调用），覆盖全局 30s 超时
 export const submitPractice = (lessonId: number, stem: string, answer: string) =>
   http.post('/learn/practice/submit', { lesson_id: lessonId, stem, answer },
     { timeout: 120000 }) as Promise<PracticeResult>
-export const listWrongbook = () => http.get('/learn/wrongbook') as Promise<WrongQuestionItem[]>
+export const listWrongbook = (courseId?: number) =>
+  http.get('/learn/wrongbook', { params: { course_id: courseId } }) as Promise<WrongQuestionItem[]>
 export const regenerateWrong = (id: number) =>
   http.post(`/learn/wrongbook/${id}/regenerate`, undefined,
     { timeout: 120000 }) as Promise<WrongQuestionItem>
