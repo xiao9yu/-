@@ -41,10 +41,11 @@ def _kp(db, name="梯度下降"):
 
 def test_decay_math(db, user):
     """2 天前的掌握度 100 → 100×0.95²=90.25。"""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     kp = _kp(db)
     profile = learn_profile.ensure_profile(user, db)
     db.add(ProfileKp(profile_id=profile.id, kp_id=kp.id, mastery=100.0,
-                     difficulty="易", last_updated=NAIVE_UTC - timedelta(days=2)))
+                     difficulty="易", last_updated=now - timedelta(days=2)))
     # 补初始化事件（仅诊断/导入事件才算初始化，该事件不触碰掌握度）
     db.add(LearnEvent(user_id=user.id, event_type="diagnostic", kp_id=kp.id, delta=0.0))
     db.commit()
@@ -66,10 +67,11 @@ def test_apply_event_first_time_and_clamp(db, user):
 
 def test_apply_event_decay_then_add(db, user):
     """4 天前的 80 → 80×0.95⁴≈65.16，再 +10 → 75.16。"""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     kp = _kp(db)
     profile = learn_profile.ensure_profile(user, db)
     db.add(ProfileKp(profile_id=profile.id, kp_id=kp.id, mastery=80.0,
-                     difficulty="易", last_updated=NAIVE_UTC - timedelta(days=4)))
+                     difficulty="易", last_updated=now - timedelta(days=4)))
     db.commit()
     row = learn_profile.apply_event(user, kp, 10.0, db, event_type="practice", correct=True)
     assert abs(row.mastery - 75.16) < 0.01
