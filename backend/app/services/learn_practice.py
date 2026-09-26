@@ -157,6 +157,17 @@ def _adjust_difficulty(row: ProfileKp, acc: float) -> str:
     return row.difficulty
 
 
+def _lesson_source(lesson) -> str:
+    """题目来源标签（练习端展示）：月考题 / 知识库生成 / 种子题库。"""
+    if lesson is None:
+        return "种子题库"
+    if lesson.lesson_type == "exam":
+        return "月考题"
+    if "知识库生成" in (lesson.title or ""):
+        return "知识库生成"
+    return "种子题库"
+
+
 def next_question(user: User, kp: str, db: Session, *, course_id: int | None = None,
                   prev_stem: str | None = None) -> dict:
     """下一道练习题：按当前难度抽题（该难度无题则放宽到该知识点全部题）。
@@ -176,8 +187,10 @@ def next_question(user: User, kp: str, db: Session, *, course_id: int | None = N
     else:
         pool = questions
     q = random.choice(pool)
+    lesson = db.get(Lesson, q["lesson_id"])
     return {"lesson_id": q["lesson_id"], "stem": q["题干"], "options": q["选项"],
-            "knowledge_point": q["知识点"], "difficulty": q.get("难度", row.difficulty)}
+            "knowledge_point": q["知识点"], "difficulty": q.get("难度", row.difficulty),
+            "source": _lesson_source(lesson)}
 
 
 def submit_answer(user: User, lesson_id: int, stem: str, answer: str,

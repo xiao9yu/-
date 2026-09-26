@@ -127,3 +127,27 @@ def test_kb_exercises_llm_error_502(client, monkeypatch):
                        json={"type": "kb_exercises", "knowledge_points": ["线性表"]},
                        headers=headers)
     assert resp.status_code == 502
+
+
+def test_kp_label_list_falls_back_to_course_kps():
+    """出题覆盖清单：教师填写值只取与课程清单精确一致的，否则用课程全清单。"""
+    from app.api.prep import _kp_label_list
+    course_kps = ["线性表", "栈与队列", "串与数组"]
+    assert _kp_label_list([], course_kps) == course_kps
+    assert _kp_label_list(["线性表"], course_kps) == ["线性表"]
+    assert _kp_label_list(["线性表", "不存在的点"], course_kps) == ["线性表"]
+    assert _kp_label_list(["不存在的点"], course_kps) == course_kps
+
+
+def test_align_kp_names_maps_llm_labels_to_course_kps():
+    """练习按知识点精确匹配抽题：LLM 自创/改写标签必须对齐回课程清单，否则题永远抽不到。"""
+    from app.api.prep import _align_kp_names
+    course_kps = ["线性表", "栈与队列", "串与数组", "数据结构基础", "图", "递归与分治"]
+    questions = [
+        {"题干": "q1", "知识点": "线性表"},             # 精确匹配：不动
+        {"题干": "q2", "知识点": "串"},                 # 包含关系 → 串与数组
+        {"题干": "q3", "知识点": "数据结构与算法基础"},  # 相似度兜底 → 数据结构基础
+        {"题干": "q4", "知识点": "图"},                 # 精确匹配：不动
+    ]
+    out = _align_kp_names(questions, course_kps)
+    assert [q["知识点"] for q in out] == ["线性表", "串与数组", "数据结构基础", "图"]

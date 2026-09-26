@@ -180,6 +180,42 @@ def _collect_resources(course_id: int, query: str, db: Session) -> tuple[str, li
           "excerpt": h["chunk"].text[:200]} for i, h in enumerate(hits, start=1)]
 
 
+def _course_kp_names(course: Course, db: Session) -> list[str]:
+    """课程知识点清单（Plan G 学习方向的知识点，course_id 隔离）。"""
+    from ..models.learn import KnowledgePoint
+    return [n for (n,) in db.query(KnowledgePoint.name)
+            .filter(KnowledgePoint.course_id == course.id).order_by(KnowledgePoint.id).all()]
+
+
+def _kp_label_list(requested: list[str], course_kp_names: list[str]) -> list[str]:
+    """出题覆盖知识点清单：教师填写值取与课程清单精确一致的，否则退回课程全清单。"""
+    picked = [kp for kp in (requested or []) if kp in course_kp_names]
+    return picked or course_kp_names
+
+
+def _align_kp_names(questions: list[dict], course_kp_names: list[str]) -> list[dict]:
+    """把生成题的知识点标签对齐到课程知识点清单。
+
+    练习端按知识点精确匹配抽题，标签不在清单内的题永远抽不到；先精确匹配，
+    再按包含关系匹配（如 LLM 出"串"而清单为"串与数组"），最后用相似度兜底
+    （如"数据结构与算法基础"→"数据结构基础"）；仍不匹配则保留原值。
+    """
+    import difflib
+    if not course_kp_names:
+        return questions
+    for q in questions:
+        name = str(q.get("知识点") or "")
+        if name in course_kp_names:
+            continue
+        matched = next((kp for kp in course_kp_names if kp in name or name in kp), None)
+        if matched is None:
+            close = difflib.get_close_matches(name, course_kp_names, n=1, cutoff=0.55)
+            matched = close[0] if close else None
+        if matched:
+            q["知识点"] = matched
+    return questions
+
+
 def _generate_kb_exercises(course: Course, data: GenerateIn, user: User, db: Session) -> dict:
     """知识库出题（三通道②）：知识库混合检索 → LLM 仅依据资料出题 → 校验 → 追加进课程习题集。
 
@@ -194,10 +230,13 @@ def _generate_kb_exercises(course: Course, data: GenerateIn, user: User, db: Ses
     if not hits:
         raise BizError(404, "知识库中未检索到该课程相关资料，请先上传文档")
     material = "\n".join(f"【{h.chunk.source}】\n{h.chunk.text[:600]}" for h in hits)
+    course_kps = _course_kp_names(course, db)
+    label_kps = _kp_label_list(data.knowledge_points, course_kps)
     content = prep_generator.generate_kb_exercises(
-        course.name, course.subject, data.chapter, data.knowledge_points,
+        course.name, course.subject, data.chapter, label_kps,
         data.count, data.difficulty, material)
     prep_generator.validate_exercises(content)
+    content["习题"] = _align_kp_names(content["习题"], course_kps)
     title = f"{course.name}知识库生成习题"
     lesson = (db.query(Lesson).filter(Lesson.course_id == course.id,
                                       Lesson.title == title).first())

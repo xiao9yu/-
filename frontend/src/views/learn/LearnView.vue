@@ -109,6 +109,7 @@
             <p><b>{{ currentQuestion.stem }}</b>
               <el-tag size="small" style="margin-left: 6px">{{ currentQuestion.knowledge_point }}</el-tag>
               <el-tag size="small" type="info" style="margin-left: 4px">{{ currentQuestion.difficulty }}</el-tag>
+              <el-tag v-if="currentQuestion.source" size="small" type="success" style="margin-left: 4px">{{ currentQuestion.source }}</el-tag>
             </p>
             <el-radio-group v-model="selectedAnswer" :disabled="!!result">
               <el-radio v-for="opt in currentQuestion.options" :key="opt" :value="opt">{{ opt }}</el-radio>

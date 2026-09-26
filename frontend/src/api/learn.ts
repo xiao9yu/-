@@ -4,7 +4,7 @@ import http from './http'
 export interface KpMastery { kp_id: number; name: string; mastery: number }
 export interface ProfileData { initialized: boolean; kps: KpMastery[]; created_at: string | null }
 export interface PathItem { kp_id: number; name: string; mastery: number; order: number; why: string }
-export interface Question { lesson_id: number; stem: string; options: string[]; knowledge_point: string; difficulty: string }
+export interface Question { lesson_id: number; stem: string; options: string[]; knowledge_point: string; difficulty: string; source?: string }
 export interface TaskItem { kp_id: number; name: string; mastery: number; why: string; question: Question }
 export interface SimilarStudent { user_id: number; real_name: string; similarity: number; strengths: string[] }
 export interface PracticeResult {
