@@ -275,7 +275,7 @@ async function loadDashboard() {
   const [p, t, s] = await Promise.all([
     getPath(currentCourseId.value ?? undefined),
     getTasks(currentCourseId.value ?? undefined),
-    getSimilar(),
+    getSimilar(currentCourseId.value ?? undefined),
   ])
   path.value = p.path
   tasks.value = t
@@ -296,8 +296,8 @@ async function startDiagnostic() {
     const data = await getDiagnostic(currentCourseId.value ?? undefined)
     diagQuestions.value = data.questions
     diagnosing.value = true
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || '暂无可用试题，请先由教师在智能备课模块生成习题')
+  } catch {
+    // 错误提示由 http 拦截器统一弹出（后端 detail），此处不再弹，避免双弹 toast
   }
 }
 

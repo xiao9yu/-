@@ -241,3 +241,18 @@ def test_monthly_exam_questions_auto_enter_practice_pool(db, seeded):
     diag = learn_practice.diagnostic_questions(db, course_id=seeded["course"].id)
     assert any(q["stem"] == "月考梯度下降题" for q in diag)
     assert all(q["stem"] != "简述梯度下降（无选项）" for q in diag)
+
+
+def test_next_question_prev_stem_fallback_single_question(db, user):
+    """候选池仅 1 题且与 prev_stem 相同：过滤后为空 → 回退全池照常出题（防无题可出）。"""
+    course = Course(name="课程", subject="x", owner_id=1)
+    db.add(course)
+    db.flush()
+    lesson = Lesson(course_id=course.id, title="习题集", lesson_type="exercises",
+                    content_json={"习题": [_question("题目甲", "A", kp="知识点A")]},
+                    created_by=1)
+    db.add(lesson)
+    db.commit()
+    q = learn_practice.next_question(user, "知识点A", db, course_id=course.id,
+                                     prev_stem="题目甲")
+    assert q["stem"] == "题目甲"

@@ -103,6 +103,41 @@ def test_kb_exercises_generate_saves_to_lesson(client, monkeypatch):
     assert resp2.status_code == 200
     assert resp2.json()["lesson"]["added"] == 0
     assert resp2.json()["lesson"]["total"] == 2
+    # 追加分支：新一批 = 1 道旧题 + 1 道新题 → 仅追加新题
+    mixed = {"习题": [EXERCISES_KB["习题"][0],
+                      {"题干": "知识库出题演示题3", "选项": ["A.甲", "B.乙", "C.丙", "D.丁"],
+                       "答案": "C", "解析": "解析3", "知识点": "线性表", "难度": "中"}]}
+    monkeypatch.setattr(prep_generator, "get_gateway", lambda: _FakeLLM(mixed))
+    resp3 = client.post(f"/api/prep/courses/{course['id']}/generate",
+                        json={"type": "kb_exercises", "knowledge_points": ["线性表"],
+                              "count": 2, "difficulty": ""},
+                        headers=headers)
+    assert resp3.status_code == 200
+    assert resp3.json()["lesson"]["added"] == 1
+    assert resp3.json()["lesson"]["total"] == 3
+
+
+def test_kb_exercises_retrieval_passes_reranker(client, monkeypatch):
+    """知识库出题检索接精排（与问答检索同路径）：retrieve_chunks 收到非空 reranker。"""
+    from app.api import prep as prep_api
+    headers = _register_login(client, "t_kb4", "teacher")
+    course = _create_course(client, headers, name="数据结构与算法")
+    sentinel = object()
+    monkeypatch.setattr(prep_api, "get_reranker", lambda: sentinel)
+    captured = {}
+
+    def fake_retrieve(user, query, db, *, top_k=8, reranker=None):
+        captured["reranker"] = reranker
+        return [_FakeHit("线性表是有限序列。")]
+
+    monkeypatch.setattr(kb_service, "retrieve_chunks", fake_retrieve)
+    monkeypatch.setattr(prep_generator, "get_gateway", lambda: _FakeLLM(EXERCISES_KB))
+    resp = client.post(f"/api/prep/courses/{course['id']}/generate",
+                       json={"type": "kb_exercises", "knowledge_points": ["线性表"],
+                             "count": 2, "difficulty": "中"},
+                       headers=headers)
+    assert resp.status_code == 200
+    assert captured["reranker"] is sentinel
 
 
 def test_kb_exercises_no_hits_404(client, monkeypatch):

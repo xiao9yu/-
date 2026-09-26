@@ -19,6 +19,7 @@ from ..models.prep import Citation, Course, CourseFile, Lesson, MediaFile, Versi
 from ..models.user import Role, User
 from ..services import kb_service, prep_export, prep_generator, prep_resources
 from ..services.embeddings import EmbedderError
+from ..services.rerank import get_reranker
 from ..services.file_service import delete_file
 from ..services.llm_gateway import LLMError
 from .deps import get_current_user
@@ -224,7 +225,8 @@ def _generate_kb_exercises(course: Course, data: GenerateIn, user: User, db: Ses
     """
     search_q = data.query.strip() or "、".join(data.knowledge_points) or course.name
     try:
-        hits = kb_service.retrieve_chunks(user, search_q, db, top_k=8)
+        hits = kb_service.retrieve_chunks(user, search_q, db, top_k=8,
+                                          reranker=get_reranker())
     except EmbedderError as exc:
         raise BizError(502, str(exc)) from exc
     if not hits:

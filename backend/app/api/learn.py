@@ -82,8 +82,9 @@ def tasks(course_id: int | None = None, user: User = Depends(_student),
 
 
 @router.get("/similar")
-def similar(user: User = Depends(_student), db: Session = Depends(get_db)):
-    return learn_profile.similar_students(user, db)
+def similar(user: User = Depends(_student), course_id: int | None = Query(None),
+            db: Session = Depends(get_db)):
+    return learn_profile.similar_students(user, db, course_id=course_id)
 
 
 # ---------- 诊断测试 / 导入 ----------

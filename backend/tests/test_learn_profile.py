@@ -188,3 +188,53 @@ def test_profile_course_scoped_and_per_direction_init(db, user):
     assert pa["initialized"] is True
     assert [k["name"] for k in pa["kps"]] == ["知识点A"]
     assert pb["initialized"] is False  # B 方向未初始化
+
+
+def test_similar_students_scoped_by_course(db, user):
+    """Plan G：course_id 限定相似度只在该方向知识点维度上计算（跨方向画像不混算）。"""
+    from app.models.prep import Course
+    other = User(username="s3", hashed_password="x", role=Role.student, real_name="赵同学")
+    db.add(other)
+    db.commit()
+    c1 = Course(name="课程甲", subject="x", owner_id=1)
+    c2 = Course(name="课程乙", subject="x", owner_id=1)
+    db.add_all([c1, c2])
+    db.flush()
+    kp_a = KnowledgePoint(name="梯度下降", course_id=c1.id)
+    kp_b = KnowledgePoint(name="决策树", course_id=c2.id)
+    db.add_all([kp_a, kp_b])
+    p1 = StudentProfile(user_id=user.id)
+    p2 = StudentProfile(user_id=other.id)
+    db.add_all([p1, p2])
+    db.flush()
+    now = NAIVE_UTC
+    db.add_all([
+        ProfileKp(profile_id=p1.id, kp_id=kp_a.id, mastery=40.0, last_updated=now),
+        ProfileKp(profile_id=p2.id, kp_id=kp_a.id, mastery=100.0, last_updated=now),
+        ProfileKp(profile_id=p2.id, kp_id=kp_b.id, mastery=100.0, last_updated=now),
+    ])
+    db.commit()
+    # 课程甲维度：只在该方向知识点上算（40 vs 100 共线 → 余弦 1.0），
+    # strengths 仅含甲方向"对方掌握而我未掌握"的点
+    r_a = learn_profile.similar_students(user, db, course_id=c1.id)
+    assert len(r_a) == 1 and abs(r_a[0]["similarity"] - 1.0) < 1e-6
+    assert r_a[0]["strengths"] == ["梯度下降"]
+    # 课程乙维度：本人在乙方向零掌握 → 零向量无相似
+    assert learn_profile.similar_students(user, db, course_id=c2.id) == []
+    # 全局：跨方向混算，相似度被乙方向稀释（对比说明 course_id 隔离的意义）
+    r_all = learn_profile.similar_students(user, db)
+    assert len(r_all) == 1 and r_all[0]["similarity"] < 1.0
+
+
+def test_get_or_create_kp_global_fallback_deterministic(db):
+    """course_id 为空且跨课程同名多条时按 id 取最小者（去掉插入序依赖）。"""
+    from app.models.prep import Course
+    c1 = Course(name="课程甲", subject="x", owner_id=1)
+    c2 = Course(name="课程乙", subject="x", owner_id=1)
+    db.add_all([c1, c2])
+    db.flush()
+    k1 = KnowledgePoint(name="决策树", course_id=c1.id)
+    k2 = KnowledgePoint(name="决策树", course_id=c2.id)
+    db.add_all([k1, k2])
+    db.commit()
+    assert learn_profile.get_or_create_kp(db, "决策树").id == min(k1.id, k2.id)

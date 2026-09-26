@@ -35,7 +35,7 @@ def test_kp_same_name_allowed_in_different_courses(db):
     db.add(KnowledgePoint(name="决策树", course_id=c2.id))
     db.commit()  # 不同课程同名合法
     db.add(KnowledgePoint(name="决策树", course_id=c1.id))
-    with pytest.raises(Exception):  # IntegrityError：同课程同名撞唯一约束
+    with pytest.raises(sa.exc.IntegrityError):  # 同课程同名撞唯一约束
         db.commit()
 
 

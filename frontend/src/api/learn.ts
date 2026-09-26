@@ -34,7 +34,8 @@ export const getPath = (courseId?: number) =>
   http.get('/learn/path', { params: { course_id: courseId } }) as Promise<{ path: PathItem[]; mastered: number; unmastered: number }>
 export const getTasks = (courseId?: number) =>
   http.get('/learn/tasks', { params: { course_id: courseId } }) as Promise<TaskItem[]>
-export const getSimilar = () => http.get('/learn/similar') as Promise<SimilarStudent[]>
+export const getSimilar = (courseId?: number) =>
+  http.get('/learn/similar', { params: { course_id: courseId } }) as Promise<SimilarStudent[]>
 export const getPractice = (kp: string, courseId?: number, prevStem?: string) =>
   http.get('/learn/practice', { params: { kp, course_id: courseId, prev_stem: prevStem } }) as Promise<Question>
 // 答错同步生成 AI 解析（DeepSeek 调用），覆盖全局 30s 超时

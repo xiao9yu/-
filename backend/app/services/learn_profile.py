@@ -65,7 +65,8 @@ def get_or_create_kp(db: Session, name: str, course_id: int | None = None) -> Kn
     query = db.query(KnowledgePoint).filter(KnowledgePoint.name == name)
     if course_id is not None:
         query = query.filter(KnowledgePoint.course_id == course_id)
-    kp = query.first()
+    # 显式按 id 排序：course_id 为空时跨课程同名知识点可能多条，去掉插入序依赖
+    kp = query.order_by(KnowledgePoint.id).first()
     if kp is None:
         kp = KnowledgePoint(name=name, course_id=course_id, description="（由学习行为自动登记）")
         db.add(kp)
@@ -200,12 +201,18 @@ def get_profile(user: User, db: Session, course_id: int | None = None) -> dict:
             "created_at": profile.created_at.replace(tzinfo=None).isoformat()}
 
 
-def similar_students(user: User, db: Session, top_n: int = 3) -> list[dict]:
+def similar_students(user: User, db: Session, top_n: int = 3, *,
+                     course_id: int | None = None) -> list[dict]:
     """相似学生（numpy 协同过滤）：掌握度向量余弦相似度 top N。
 
+    Plan G：course_id 非空时只在当前方向（课程）的知识点维度上算相似，
+    避免跨方向画像混算；空 = 全局（兼容旧调用）。
     数据权限：仅返回姓名与"对方掌握而我未掌握"的知识点名，不返回对方完整画像。
     """
-    all_kps = db.query(KnowledgePoint).order_by(KnowledgePoint.id).all()
+    query = db.query(KnowledgePoint)
+    if course_id is not None:
+        query = query.filter(KnowledgePoint.course_id == course_id)
+    all_kps = query.order_by(KnowledgePoint.id).all()
     if not all_kps:
         return []
     now = _now()
