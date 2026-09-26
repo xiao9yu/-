@@ -57,7 +57,10 @@ class Settings(BaseSettings):
     # 精排 tokenizer 截断长度。**调小会截断 chunk 尾部**，从而改变精排分数与阈值过滤，
     # 属质量-时延权衡而非纯性能开关；改前先用 backend/eval/rerank_ab.py 做对照。
     # 1024 是"不截断"档：候选 chunk 最长 800 字（实测 padding 后约 521 token）。
-    rerank_max_len: int = 1024
+    # 2026-09-26 A/B（eval/reports/rerank_ml1024.json vs rerank_ml384.json，32 题）：
+    # 384 时 hit@1/3/5 与 MRR 逐项不变、零回退，实测耗时 14.3s → 8.2s/题（−43%），
+    # 平均保留条数 2.72 → 2.59（LLM 提示词更短），故取 384。
+    rerank_max_len: int = 384
     # LLM 流式问答三段超时保护（评测 §5.5）：32 题实测出现一例 103s 极端抖动
     # （生成段 ~82s，约 5.5 字/秒）。正常回答（≤500 字）生成段约 10~20s，阈值留有
     # 数倍余量；超时按 LLMError 走协议 error 事件，用户看到"请稍后重试"而非无限等待。
