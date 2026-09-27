@@ -107,8 +107,11 @@ onMounted(async () => {
 })
 
 function findParam(m: Live2DModel, re: RegExp, fallback: string): string {
-  const names: string[] = (m as any).internalModel?.coreModel?.parameters?.ids ?? []
-  return names.find((n) => re.test(n)) ?? fallback
+  // Cubism4 core 参数表是 _parameterIds（带下划线的私有字段）；parameters.ids 为其它
+  // 版本/结构的兜底路径。头显无头实测确认 _parameterIds 为 29 个 "ParamXxx" 字符串。
+  const core = (m as any).internalModel?.coreModel
+  const names: string[] = core?._parameterIds ?? core?.parameters?.ids ?? []
+  return names.find((n) => re.test(String(n))) ?? fallback
 }
 
 function setParam(core: any, id: string, v: number) {
@@ -124,6 +127,92 @@ function setParam(core: any, id: string, v: number) {
  *  经 afterMotionUpdate 低通后写入参数）。 */
 function setMouth(v: number) {
   lastMouth = Math.max(0, Math.min(1, v))
+}
+
+// ---------- 表情联动（参数级临时覆写） ----------
+// 模型无表情文件（Hiyori 官方包 Expressions 为空），"表情"与口型共用同一写入点：
+// afterMotionUpdate 在动作更新之后、绘制之前触发，覆写值即本帧绘制所用，因此可以用
+// 参数目标值临时接管表情；释放时渐隐到 0 后**停止写入**，模型自带的眨眼/待机动作
+// 立即恢复接管这些参数（持续写 0 会把眼睛钉死在闭眼上）。
+// 参数按正则从模型实际参数名解析（findParam 兜底），模型缺该参数时静默跳过。
+interface ExprEntry { param: string; current: number; target: number }
+const EXPRESSIONS: Record<string, { re: RegExp; target: number }[]> = {
+  happy: [                              // 高兴：笑眼（下眼睑上弯）
+    { re: /EyeLSmile/i, target: 1 },
+    { re: /EyeRSmile/i, target: 1 },
+  ],
+  think: [                              // 思考：眼珠向右上看
+    { re: /EyeBallX/i, target: 0.55 },
+    { re: /EyeBallY/i, target: 0.45 },
+  ],
+  surprise: [                           // 惊讶（打断时一闪）：睁大眼 + 脸颊泛红
+    { re: /EyeLOpen/i, target: 1 },
+    { re: /EyeROpen/i, target: 1 },
+    // Hiyori 无眉部抬升参数（只有 BrowLForm/BrowRForm，语义不定），
+    // 用 ParamCheek 脸红做惊讶的视觉主体——方向确定（1=红）且符合"被抢话"人设。
+    { re: /Cheek/i, target: 1 },
+  ],
+}
+const EXPR_APPLY_K = 0.25    // 表情上身：稍快，反应跟手
+const EXPR_RELEASE_K = 0.12  // 表情释放：渐隐，回归自然动作不跳变
+
+let exprName: string | null = null
+let exprHoldTimer: number | undefined
+const exprActive: ExprEntry[] = []
+
+/** 读取模型参数当前值（新表情项以此为起点渐入，避免从 0 起跳把眼睛瞬闭再睁开）。 */
+function paramValue(core: any, id: string): number {
+  try {
+    if (core && typeof core.getParameterValueById === 'function') {
+      return Number(core.getParameterValueById(id)) || 0
+    }
+  } catch { /* 参数不存在时忽略 */ }
+  return 0
+}
+
+/** 切换表情；holdMs>0 表示到时自动复位（如打断惊讶）。复位前忽略外部置空请求，
+ *  避免"惊讶 → 服务端 listening 状态 → 立即置空"把表情一闪而过。 */
+function setExpression(name: string | null, holdMs?: number) {
+  if (name === exprName && name !== null) return
+  if (name === null && exprHoldTimer !== undefined) return
+  if (exprHoldTimer !== undefined) { clearTimeout(exprHoldTimer); exprHoldTimer = undefined }
+  exprName = name
+  const wants = new Map<string, number>()
+  for (const spec of EXPRESSIONS[name || ''] || []) {
+    const param = findParam(model as Live2DModel, spec.re, '')
+    if (param) wants.set(param, spec.target)
+  }
+  // 不再需要的活跃参数 → 目标 0 渐隐释放；仍需要的 → 原地换目标；新参数 → 从当前值渐入
+  const core = (model as any)?.internalModel?.coreModel
+  for (const entry of exprActive) {
+    const t = wants.get(entry.param)
+    if (t !== undefined) { entry.target = t; wants.delete(entry.param) } else { entry.target = 0 }
+  }
+  for (const [param, target] of wants) {
+    exprActive.push({ param, current: paramValue(core, param), target })
+  }
+  // 惊讶叠加一个低点头动作：参数覆写只有脸红/睁眼，配上动作反应才"肉眼可见"。
+  // flickDown 与随机小动作同组名，priority=1 打断当前待机、结束后自动恢复。
+  if (name === 'surprise') {
+    try { model?.motion('flickDown', undefined, 1) } catch { /* 组不存在时忽略 */ }
+  }
+  if (name && holdMs) {
+    exprHoldTimer = window.setTimeout(() => {
+      exprHoldTimer = undefined
+      setExpression(null)
+    }, holdMs)
+  }
+}
+
+/** 每帧（afterMotionUpdate，口型之后）推进表情覆写：渐入/渐隐，释放完毕即停止写入。 */
+function applyExpression(core: any) {
+  for (let i = exprActive.length - 1; i >= 0; i--) {
+    const e = exprActive[i]
+    const k = e.target === 0 ? EXPR_RELEASE_K : EXPR_APPLY_K
+    e.current += (e.target - e.current) * k
+    setParam(core, e.param, e.current)
+    if (e.target === 0 && Math.abs(e.current) < 0.02) exprActive.splice(i, 1)
+  }
 }
 
 /** 口型平滑状态：快开慢合低通，跟上语音节奏且无逐帧抖动。 */
@@ -144,6 +233,7 @@ function onAfterMotion() {
     breathClock += 0.0167  // 帧累计时钟（正常 ticker 下等价实时；手动步进调试时可复现）
     setParam(core, breathParam, 0.5 + 0.5 * Math.sin(breathClock * 0.9))  // 呼吸 0~1
   }
+  applyExpression(core)   // 表情覆写最后写入：不被本函数其它参数覆盖
 }
 
 /** 当前口型状态（调试探针：无头验证读参数值确认音量→口型链路）。 */
@@ -162,6 +252,15 @@ function getMouth() {
   }
 }
 
+/** 当前表情状态（调试探针：确认哪些参数被解析命中、覆写推进到什么值）。 */
+function getExpression() {
+  return {
+    name: exprName,
+    hold: exprHoldTimer !== undefined,
+    entries: exprActive.map((e) => ({ param: e.param, current: +e.current.toFixed(3), target: e.target })),
+  }
+}
+
 onBeforeUnmount(() => {
   if (gestureTimer) clearTimeout(gestureTimer)
   try { (model as any)?.internalModel?.off?.('afterMotionUpdate', onAfterMotion) } catch { /* 忽略 */ }
@@ -170,10 +269,12 @@ onBeforeUnmount(() => {
   app?.destroy(true)
 })
 
-defineExpose({ setMouth, getMouth })
+defineExpose({ setMouth, getMouth, setExpression, getExpression })
 if (import.meta.env.DEV) {
   ;(window as any).__live2dMouth = getMouth
   ;(window as any).__live2dSetMouth = setMouth   // 调试探针：强制口型值做视觉验证
+  ;(window as any).__live2dExpression = setExpression  // 调试探针：强制表情做视觉验证
+  ;(window as any).__live2dExprState = getExpression
   // 冻结探针：停 ticker 后手动以 dt=0、固定 now 推进模型——动作/物理/眨眼/自然运动
   // 全部静止，仅 afterMotionUpdate 写的口型与呼吸变化 → 像素差即口型视觉证据
   ;(window as any).__live2dFreeze = () => {

@@ -143,7 +143,7 @@ def delete_document(doc_id: int, user: User, upload_dir, db: Session,
 
 def answer_events(question: str, user: User, db: Session, *,
                   vector_store=None, embedder=None, reranker=None, gateway=None,
-                  session=None) -> Iterator[tuple[str, Any]]:
+                  session=None, cancel=None) -> Iterator[tuple[str, Any]]:
     """问答事件流（(事件名, 数据) 元组）：citations → delta* → done；失败发 error。
 
     ask_stream 的 SSE 字符串仅是它的薄包装；WS 语音链路（api/voice.py）直接消费本生成器。
@@ -153,6 +153,11 @@ def answer_events(question: str, user: User, db: Session, *,
       · 检索前用 rewrite_query 把指代型追问与前一轮问题拼接，避免检索必然空手；
       · 流结束后把本轮问答 + 引用落库，引用可随历史回放（"引用延续"）。
     不传 session 则等价于原单轮行为（既有单轮调用与测试契约不变）。
+
+    cancel（threading.Event，可选）：置位即显式中止——停止拉取 LLM 流（HTTP 连接随之
+    关闭、远端停止生成），且**不落库半截回答**（多轮历史不被中断内容污染）。语音链路
+    的"打断"传入此信号；此前依赖调用方放弃生成器触发 GC 关闭流，属隐式行为，这里
+    把契约显式化并有测试钉住。
     """
     answer = ""
     try:
@@ -165,6 +170,8 @@ def answer_events(question: str, user: User, db: Session, *,
         retrieval_q = chat_service.rewrite_query(question, history)
         hits = hybrid_retrieve(retrieval_q, _load_collections(user, db), top_k=5,
                                vector_store=vs, embedder=emb, rerank=reranker)
+        if cancel is not None and cancel.is_set():
+            return          # 检索期间被打断：不进入生成阶段
         selected = _select_hits(hits, 4000)
         citations = [
             {
@@ -181,11 +188,17 @@ def answer_events(question: str, user: User, db: Session, *,
         ]
         yield ("citations", citations)
         gw = gateway or get_gateway()
+        aborted = False
         for piece in _clean_ref_stream(
                 gw.chat_stream(build_answer_prompt(question, hits, history=history)),
                 len(citations)):
+            if cancel is not None and cancel.is_set():
+                aborted = True
+                break       # 停止拉取 → 底层流生成器关闭 → LLM 连接中止、远端停止生成
             answer += piece
             yield ("delta", {"text": piece})
+        if aborted:
+            return          # 被打断：不记画像、不落库半截回答，也不发 done
         # 工单19 画像迭代联动：学生提问命中知识点 → 记低权重事件（失败不影响问答流）
         if user.role == Role.student:
             try:

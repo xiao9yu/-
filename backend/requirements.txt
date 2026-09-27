@@ -24,3 +24,6 @@ numpy>=1.26
 funasr>=1.2
 kaldi-native-fbank>=1.22
 edge-tts>=7.0
+# funasr postprocess_hotwords 模糊匹配依赖（拼音键 + 模糊比对；仅文本级热词纠正需要）
+pypinyin>=0.51
+rapidfuzz>=3.0

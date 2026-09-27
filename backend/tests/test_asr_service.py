@@ -6,14 +6,14 @@ from app.services import asr_service
 
 
 class FakeModel:
-    """funasr AutoModel 替身：generate 返回其构造时固定的结果。"""
+    """funasr AutoModel 替身：generate 返回其构造时固定的结果，并记录调用参数。"""
 
     def __init__(self, text):
         self.text = text
         self.calls = []
 
-    def generate(self, input=None):
-        self.calls.append(input)
+    def generate(self, input=None, **kwargs):
+        self.calls.append((input, kwargs))
         return [{"text": self.text}]
 
 
@@ -55,3 +55,27 @@ def test_model_loaded_once(monkeypatch):
     asr_service.transcribe(b"a")
     asr_service.transcribe(b"b")
     assert len(calls) == 1
+
+
+def test_transcribe_passes_hotwords_when_configured(monkeypatch):
+    """领域热词：默认配置非空时随转写传入 postprocess_hotwords（文本级纠正）。"""
+    model = FakeModel("向量召回")
+    monkeypatch.setattr(asr_service, "_load_model", lambda: model)
+    asr_service.transcribe(b"wav-bytes")
+    assert model.calls[0][1]["postprocess_hotwords"] == asr_service.hotword_terms()
+
+
+def test_transcribe_omits_hotwords_when_disabled(monkeypatch):
+    """asr_hotwords 置空 = 关闭热词：不传参，行为与无热词版本一致。"""
+    model = FakeModel("你好")
+    monkeypatch.setattr(asr_service, "_load_model", lambda: model)
+    monkeypatch.setattr(asr_service.settings, "asr_hotwords", "")
+    asr_service.transcribe(b"wav-bytes")
+    assert model.calls[0][1] == {}
+
+
+def test_hotword_terms_dedupes_and_strips(monkeypatch):
+    monkeypatch.setattr(asr_service.settings, "asr_hotwords", " 精排 , 精排 ,, 向量召回 ")
+    assert asr_service.hotword_terms() == ["精排", "向量召回"]
+    monkeypatch.setattr(asr_service.settings, "asr_hotwords", "")
+    assert asr_service.hotword_terms() == []

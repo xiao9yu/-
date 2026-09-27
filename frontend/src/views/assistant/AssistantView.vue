@@ -239,6 +239,10 @@ const streamMode = ref(false)               // 自然对话开关
 const partial = ref('')                     // 流式识别中间结果（边说边上屏）
 const playing = ref(false)                  // 是否正在播报（用于显示打断与暂停送帧）
 const avatarRef = ref<InstanceType<typeof Live2DAvatar>>()
+/** 表情联动：思考/高兴随状态切换，打断给一闪惊讶；null 由组件渐隐交还模型动作。 */
+function setExpr(name: string | null, holdMs?: number) {
+  avatarRef.value?.setExpression(name, holdMs)
+}
 const player = new PlaybackManager()
 const voice = new VoiceClient()
 let recorder: MediaRecorder | null = null
@@ -339,14 +343,15 @@ function stripForSpeech(text: string): string {
 
 /** 统一播报：优先要口型时间轴（marks），拿不到就退回纯音频（音量驱动口型）。 */
 async function speak(text: string) {
-  if (muted.value || !text) return
+  if (muted.value || !text) { setExpr(null); return }
   const cleaned = stripForSpeech(text).slice(0, 2000)
-  if (!cleaned.trim()) return
+  if (!cleaned.trim()) { setExpr(null); return }
   if (player.isPlaying) player.stop()
   const timed = await speakTextTimed(cleaned)
-  if (!timed) return
+  if (!timed) { setExpr(null); return }
   voiceState.value = 'playing'
   playing.value = true
+  setExpr('happy')   // 开口播报：笑眼
   await player.enqueue(timed.blob, timed.marks)
 }
 
@@ -363,6 +368,7 @@ async function onAsk() {
   const msg: Answer = { text: '' }
   currentA.value = msg
   answering.value = true
+  setExpr('think')   // 生成答案期间：思考表情
   try {
     await askStream(q,
       (citations) => {
@@ -395,14 +401,16 @@ function onVoiceEvent(e: VoiceEvent) {
       voiceState.value = 'idle'
       streamMode.value = false
       stopStreamer()
+      setExpr('surprise', 1600)   // 整轮被取消：惊讶一闪后自行复位
     } else if (e.state === 'ready') {
       voiceReady.value = true
-      if (!streamMode.value) voiceState.value = 'idle'
+      if (!streamMode.value) { voiceState.value = 'idle'; setExpr(null) }
     } else if (e.state === 'listening') {
       voiceReady.value = true
       voiceState.value = 'listening'
+      setExpr(null)               // 定时表情生效期间会被组件忽略，不会冲掉惊讶
     } else if (e.state === 'transcribing') voiceState.value = 'transcribing'
-    else if (e.state === 'thinking') voiceState.value = 'thinking'
+    else if (e.state === 'thinking') { voiceState.value = 'thinking'; setExpr('think') }
   } else if (e.type === 'partial') {
     partial.value = e.text
   } else if (e.type === 'transcript') {
@@ -426,12 +434,13 @@ function onVoiceEvent(e: VoiceEvent) {
     const arr = new Uint8Array(bytes.length)
     for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
     playing.value = true
+    setExpr('happy')   // 朵娅开口：笑眼（同名校验在组件内，逐句重复调用无开销）
     void player.enqueue(new Blob([arr], { type: 'audio/mpeg' }), e.marks)
   } else if (e.type === 'done' || e.type === 'segment_done') {
     if (voiceMsg && !voiceMsg.text) voiceMsg.text = '（无内容）'
     voiceMsg = null
     if (e.audio_total > 0) voiceState.value = 'playing'
-    else if (!streamMode.value) voiceState.value = 'idle'
+    else if (!streamMode.value) { voiceState.value = 'idle'; setExpr(null) }
     if (e.type === 'segment_done') turns.value += 1
   } else if (e.type === 'error') {
     voiceMsg = null
@@ -526,6 +535,7 @@ async function toggleStreamMode() {
 function interrupt() {
   player.stop()
   playing.value = false
+  setExpr('surprise', 1600)   // 被抢话：惊讶一闪（服务端随后的 listening 状态不会冲掉它）
   // 自然对话：只掐掉本轮播报，监听继续（可以随时抢话）；按住说话：整轮取消
   if (streamMode.value) voice.interrupt()
   else { voice.cancel(); voiceState.value = 'idle' }
@@ -577,7 +587,11 @@ async function removeSession(s: ChatSessionInfo) {
 
 onMounted(() => {
   player.onMouth = (v) => avatarRef.value?.setMouth(v)
-  player.onEnd = () => { playing.value = false; if (!streamMode.value) voiceState.value = 'idle' }
+  player.onEnd = () => {
+    playing.value = false
+    if (!streamMode.value) voiceState.value = 'idle'
+    setExpr(null)   // 播报结束：表情复位（惊讶 hold 期内会被组件忽略）
+  }
   voice.connect({ onEvent: onVoiceEvent, onClose: onVoiceClose })
   void loadDocs()
   void voiceCapabilities()

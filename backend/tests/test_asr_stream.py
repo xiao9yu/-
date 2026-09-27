@@ -25,11 +25,13 @@ class FakeStreamAsr:
     def __init__(self, texts):
         self.texts = list(texts)
         self.final_calls = 0
+        self.hotwords: list[str | None] = []
 
     def generate(self, input=None, cache=None, is_final=False, chunk_size=None,
-                 encoder_chunk_look_back=None, decoder_chunk_look_back=None):
+                 encoder_chunk_look_back=None, decoder_chunk_look_back=None, hotword=None):
         if is_final:
             self.final_calls += 1
+        self.hotwords.append(hotword)
         return [{"text": self.texts.pop(0) if self.texts else ""}]
 
 
@@ -160,3 +162,34 @@ def test_float_to_wav16_roundtrip_header():
     wav = asr_stream._float_to_wav16(samples)
     assert wav[:4] == b"RIFF" and wav[8:12] == b"WAVE"
     assert b"fmt " in wav[:20]
+
+
+def test_stream_asr_receives_hotword(monkeypatch):
+    """模型级热词：流式推理每次 generate 都带空格分隔的热词串（seaco 字符串格式）。"""
+    asr = FakeStreamAsr(["向量", "向量召回"])
+    _preload(monkeypatch, FakeVad([[[0, -1]]]), asr)
+    rec = asr_stream.StreamingRecognizer()
+    for _ in range(3):          # 3×200ms 才凑满 600ms 步长触发一次流式推理
+        rec.feed(_pcm(200))
+    assert asr.hotwords and all(h is not None for h in asr.hotwords)
+    assert "向量召回" in asr.hotwords[0]
+
+
+def test_stream_asr_omits_hotword_when_disabled(monkeypatch):
+    """热词配置置空：流式推理不传 hotword（与关闭前协议一致）。"""
+    from app.services import asr_service
+
+    monkeypatch.setattr(asr_service.settings, "asr_hotwords", "")
+    asr = FakeStreamAsr(["你好", "你好呀"])
+    _preload(monkeypatch, FakeVad([[[0, -1]]]), asr)
+    rec = asr_stream.StreamingRecognizer()
+    for _ in range(3):
+        rec.feed(_pcm(200))
+    assert asr.hotwords and all(h is None for h in asr.hotwords)
+
+
+def test_hotword_str_joins_terms(monkeypatch):
+    from app.services import asr_service
+
+    monkeypatch.setattr(asr_service.settings, "asr_hotwords", "精排, 向量召回 ")
+    assert asr_stream._hotword_str() == "精排 向量召回"

@@ -273,11 +273,18 @@ class StreamingRecognizer:
 
     def _asr_generate(self, model, frame: np.ndarray, *, is_final: bool) -> str:
         try:
+            kwargs = {}
+            hotword = _hotword_str()
+            if hotword:
+                # 模型级热词（seaco/paraformer-streaming 原生支持）：解码时对领域词加偏置，
+                # 与批量路径的文本级纠正互补——批量 paraformer-zh 无此能力才退而求其次。
+                kwargs["hotword"] = hotword
             res = model.generate(
                 input=frame, cache=self._asr_cache, is_final=is_final,
                 chunk_size=ASR_CHUNK_SIZE,
                 encoder_chunk_look_back=ENC_LOOK_BACK,
                 decoder_chunk_look_back=DEC_LOOK_BACK,
+                **kwargs,
             )
         except Exception:
             logger.exception("流式 ASR 推理失败")
@@ -285,6 +292,17 @@ class StreamingRecognizer:
         if not res:
             return ""
         return str(res[0].get("text") or "").strip()
+
+
+def _hotword_str() -> str:
+    """领域热词 → 空格分隔串（seaco 模型级 hotword 的字符串格式：每个词一个 token）。
+
+    直接取自 asr_service 同一份 settings 配置，保证两条路径热词一致；每次现算不缓存
+    （几十个词的分割开销可忽略，测试 monkeypatch settings 也无需复位缓存）。
+    """
+    from .asr_service import hotword_terms
+
+    return " ".join(hotword_terms())
 
 
 # ---------- 工具 ----------

@@ -58,6 +58,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { ArrowLeft, ArrowRight, CloseBold, Microphone, Mute, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { PlaybackManager } from '@/utils/audio'
 import { speakTextTimed } from '@/api/voice'
+import type { VoiceMark } from '@/utils/lipsync'
 import Live2DAvatar from '@/components/live2d/Live2DAvatar.vue'
 
 interface LectureSlide {
@@ -99,6 +100,24 @@ let seq = 0
 /** 整课自然讲完标志：仅此时再点播放才从头重讲（手动翻到末页点播放应只讲末页）。 */
 let ended = false
 
+// 讲稿是确定文本（备课时已生成）：页级音频缓存 + 下一页预取，翻页零等待。
+// 失败不入缓存（下次翻回重试）；缓存只存成功项，合成失败走 fallbackAdvance 老路径。
+const audioCache = new Map<number, { blob: Blob; marks: VoiceMark[] }>()
+const prefetching = new Set<number>()
+
+/** 后台预合成第 i 页：命中缓存/已在合成/无文本/静音 则跳过。 */
+function prefetch(i: number) {
+  if (i < 0 || i >= props.slides.length) return
+  if (muted.value || audioCache.has(i) || prefetching.has(i)) return
+  const text = scriptOf(props.slides[i])
+  if (!text) return
+  prefetching.add(i)
+  void speakTextTimed(text)
+    .then((timed) => { if (timed) audioCache.set(i, timed) })
+    .catch(() => { /* TTS 降级：不缓存，播放时走失败兜底 */ })
+    .finally(() => prefetching.delete(i))
+}
+
 player.onEnd = () => {
   if (!playing.value) return
   if (pageIndex.value < props.slides.length - 1) {
@@ -119,12 +138,17 @@ async function playCurrent() {
     return
   }
   if (muted.value) return
-  const timed = await speakTextTimed(text)
+  let timed = audioCache.get(pageIndex.value)
+  if (!timed) {
+    timed = await speakTextTimed(text)
+    if (timed) audioCache.set(pageIndex.value, timed)
+  }
   if (my !== seq) return  // 期间被手动翻页/停止/静音
   if (!timed) {
     fallbackAdvance(my)   // TTS 不可用：字幕仍显示，短暂停留后继续（讲课不中断）
     return
   }
+  prefetch(pageIndex.value + 1)   // 本页开始播：后台预合成下一页（翻页零等待）
   try {
     playing.value = true
     await player.enqueue(timed.blob, timed.marks)
@@ -176,6 +200,7 @@ function onPrev() {
   playing.value = false
   ended = false
   pageIndex.value -= 1
+  prefetch(pageIndex.value)   // 手动翻页后立即预合成本页：点播放即出声
 }
 
 function onNext() {
@@ -185,6 +210,7 @@ function onNext() {
   playing.value = false
   ended = false
   pageIndex.value += 1
+  prefetch(pageIndex.value)   // 手动翻页后立即预合成本页：点播放即出声
 }
 
 function onStop() {
@@ -193,6 +219,7 @@ function onStop() {
   playing.value = false
   ended = false
   pageIndex.value = 0
+  audioCache.clear()
   emit('close')  // spec §3.1：停止键退出讲课态（右上角返回同效）
 }
 
@@ -210,12 +237,14 @@ function onClose() {
   player.stop()
   seq += 1
   playing.value = false
+  audioCache.clear()
   emit('close')
 }
 
 onBeforeUnmount(() => {
   player.stop()
   seq += 1
+  audioCache.clear()
 })
 </script>
 

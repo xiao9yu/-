@@ -313,3 +313,55 @@ def test_answer_events_strips_out_of_range_refs_from_deltas(tmp_path, db, monkey
     deltas = "".join(d["text"] for e, d in events if e == "delta")
     assert deltas == "依据[1]，另见"
     assert any("引用编号越界" in r.message for r in caplog.records)
+
+
+def test_answer_events_cancel_stops_pulling_llm_and_skips_turn(tmp_path, db, monkeypatch):
+    """打断即停生成（显式契约）：cancel 置位后不再拉取 LLM 流，无 done、不落库半截回答。"""
+    import threading
+
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: _FakeStore(tmp_path))
+    monkeypatch.setattr(
+        kb_service.chat_service, "append_turn",
+        lambda *a, **k: pytest.fail("打断后不得把半截回答写进多轮历史"),
+    )
+
+    cancel = threading.Event()
+
+    class FakeGateway:
+        def __init__(self):
+            self.yielded = 0
+
+        def chat_stream(self, messages, temperature=0.7):
+            for i in range(100):
+                self.yielded += 1
+                if i == 1:
+                    cancel.set()        # 第二片产出前置位：模拟生成中途用户打断
+                yield f"片{i}"
+
+    gw = FakeGateway()
+    monkeypatch.setattr(kb_service, "get_gateway", lambda: gw)
+    events = list(kb_service.answer_events("梯度下降", _student(), db, cancel=cancel))
+    names = [e for e, _ in events]
+    assert ("done", {}) not in events            # 被打断不发给束事件
+    assert names.count("delta") == 1             # 只播出了打断前已产出的第一片
+    assert gw.yielded <= 2                       # 流已被放弃（连接关闭、远端停止生成）
+
+
+def test_answer_events_cancel_during_retrieval_yields_nothing(tmp_path, db, monkeypatch):
+    """检索阶段就已被打断：不进生成、不产 citations 之后的事件。"""
+    import threading
+
+    monkeypatch.setattr(kb_service, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(kb_service, "get_vector_store", lambda: _FakeStore(tmp_path))
+
+    class NeverGateway:
+        def chat_stream(self, messages, temperature=0.7):
+            pytest.fail("检索阶段被打断后不得启动 LLM 生成")
+            yield ""  # pragma: no cover
+
+    monkeypatch.setattr(kb_service, "get_gateway", lambda: NeverGateway())
+    cancel = threading.Event()
+    cancel.set()                                # 提前置位：等价于检索期间收到打断
+    events = list(kb_service.answer_events("梯度下降", _student(), db, cancel=cancel))
+    assert events == []

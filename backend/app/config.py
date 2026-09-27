@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     voice_stream_enabled: bool = True       # 流式语音会话总开关（模型不可用时自动关闭）
     tts_voice: str = "zh-CN-XiaoyiNeural"   # 晓伊·元气少女音：匹配朵娅的二次元形象
     tts_pitch: str = "+15Hz"                # 音调调高更萌（edge-tts 频率偏移）
+    # ASR 领域热词（逗号分隔，置空关闭）：教育场景术语/课程概念被通用模型误转写时纠偏。
+    # 流式路径走模型级 hotword（解码偏置），批量路径走文本级 postprocess_hotwords
+    # （拼音模糊纠正，如"项链召回"→"向量召回"），由 asr_service/asr_stream 各自取用。
+    asr_hotwords: str = ("向量召回,精排,重排,知识库,错题本,学习率,梯度下降,反向传播,"
+                         "过拟合,欠拟合,正则化,决策树,随机森林,卷积神经网络,循环神经网络,"
+                         "聚类,向量化,嵌入,特征工程,智能备课,课件,题库,知识点,智能助教")
 
 
 def _resolve_secret_key(cfg: Settings) -> None:

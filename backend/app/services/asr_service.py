@@ -42,12 +42,26 @@ def get_asr():
         return _model
 
 
+def hotword_terms() -> list[str]:
+    """领域热词列表（去重、去空）；settings.asr_hotwords 置空即关闭。"""
+    return list(dict.fromkeys(t.strip() for t in settings.asr_hotwords.split(",") if t.strip()))
+
+
 def transcribe(wav_bytes: bytes) -> str:
-    """16k 单声道 WAV 字节 → 转写文本。模型未就绪抛 ASRUnavailableError；空结果返回 ""。"""
+    """16k 单声道 WAV 字节 → 转写文本。模型未就绪抛 ASRUnavailableError；空结果返回 ""。
+
+    领域热词走文本级 postprocess_hotwords（AutoModel 层、模型无关）：批量 paraformer-zh
+    没有模型级 hotword 偏置，改用拼音模糊纠正——通用模型把"向量召回"听成"项链召回"
+    这类领域词错误，会在最终文本上按热词表纠回（funasr 1.2+ 特性；依赖 pypinyin）。
+    """
     model = get_asr()
     if model is None:
         raise ASRUnavailableError("语音识别未就绪，请打字提问")
-    results = model.generate(input=wav_bytes)
+    kwargs = {}
+    terms = hotword_terms()
+    if terms:
+        kwargs["postprocess_hotwords"] = terms
+    results = model.generate(input=wav_bytes, **kwargs)
     if not results:
         return ""
     return str(results[0].get("text") or "").strip()

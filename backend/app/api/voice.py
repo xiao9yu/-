@@ -131,6 +131,9 @@ def _answer_and_speak(text: str, user: User, db: Session, holder: dict,
     0.3~1s）会短暂阻塞 LLM 流消费，聊天框文本有轻微停顿，属演示可接受换取的
     首句播报低延迟。单句合成失败静默跳过（§6 降级）。
 
+    cancel 一路传进 answer_events：打断不只停播报，还显式中止 LLM 生成（连接关闭、
+    远端停止产出）且不把半截回答落进多轮历史。
+
     音频事件带 marks（edge-tts WordBoundary 时间轴）：数字人据此把口型对齐到
     "哪个字正在被念"，而不是只看音量强弱（详见前端 utils/lipsync.ts）。
     """
@@ -159,7 +162,8 @@ def _answer_and_speak(text: str, user: User, db: Session, holder: dict,
         emit({"type": "audio", "seq": seq, "marks": marks,
               "data": base64.b64encode(mp3).decode("ascii")})
 
-    for event, data in kb_service.answer_events(text, user, db, session=session):
+    for event, data in kb_service.answer_events(text, user, db, session=session,
+                                                cancel=cancel):
         if cancel.is_set():
             return seq
         if event == "citations":
