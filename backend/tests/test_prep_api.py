@@ -111,6 +111,23 @@ def test_generate_endpoint_mocks_gateway_and_uses_resources(client, db, tmp_path
     assert "梯度下降" in fake.calls[0]["messages"][-1]["content"]  # prompt 含课程信息
 
 
+def test_create_lesson_type_whitelist(client):
+    """教案类型白名单：五种教案类型可存；kb_exercises 是题库生成（非教案），拒绝——
+    否则脏类型会漏到下游标签/编辑器/导出映射。前端保存必须发生成时的 result.type。"""
+    headers = _register_login(client, "t_whitelist", "teacher")
+    course = _create_course(client, headers)
+    for t in ("plan", "cw", "exercises", "case", "exam"):
+        resp = client.post(f"/api/prep/courses/{course['id']}/lessons",
+                           json={"title": f"教案-{t}", "lesson_type": t, "content_json": {}},
+                           headers=headers)
+        assert resp.status_code == 200, f"类型 {t} 应可保存"
+    resp = client.post(f"/api/prep/courses/{course['id']}/lessons",
+                       json={"title": "出题", "lesson_type": "kb_exercises", "content_json": {}},
+                       headers=headers)
+    assert resp.status_code == 400
+    assert "不支持的教案类型" in resp.json()["detail"]
+
+
 def test_lesson_save_version_restore_and_citations(client):
     headers = _register_login(client, "t4", "teacher")
     course = _create_course(client, headers)

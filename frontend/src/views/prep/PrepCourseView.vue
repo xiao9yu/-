@@ -251,7 +251,10 @@ async function onCopyResult() {
 
 async function onSave() {
   if (!lessonTitle.value) { ElMessage.warning('请填写标题'); return }
-  await createLesson(courseId, { title: lessonTitle.value, lesson_type: genForm.type, content_json: result.value.content })
+  // 用**生成时**的类型（result.type）而非当前单选（genForm.type）：生成后切换类型
+  // 再保存会发 kb_exercises 撞后端白名单 400「不支持的教案类型」，或发成与内容不符的
+  // 类型标签；保存块本就只在非 kb_exercises 结果上渲染，result.type 必是五种教案类型之一。
+  await createLesson(courseId, { title: lessonTitle.value, lesson_type: result.value.type, content_json: result.value.content })
   ElMessage.success('已保存')
   await load()
 }
