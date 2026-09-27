@@ -127,21 +127,27 @@ export class PlaybackManager {
         this.onMouth?.(0)
         return
       }
-      this.analyser.getByteTimeDomainData(data)
-      let sum = 0
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128
-        sum += v * v
-      }
-      this.amp = Math.min(1, Math.sqrt(sum / data.length) * 4)
-      this.onVolume?.(this.amp)
-      if (this.env && this.ctx) {
-        // 音量门限：包络决定"何时张口、张多大"，音量决定"这一刻是否真在出声"，
-        // 两者相乘 → 时间轴错位或静音段都不会出现凭空张合的嘴。
-        const gate = Math.min(1, this.amp * 3)
-        this.onMouth?.(this.env.at(this.ctx.currentTime - this.startedAt) * (0.35 + 0.65 * gate))
-      } else {
-        this.onMouth?.(this.amp)
+      // 单帧异常只跳过本帧、不断循环：包络越界等错误若把 RAF 链打死，表现是
+      // "第一句之后口型静默冻结"且控制台只有一条报错——极难排查的静默故障。
+      try {
+        this.analyser.getByteTimeDomainData(data)
+        let sum = 0
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128
+          sum += v * v
+        }
+        this.amp = Math.min(1, Math.sqrt(sum / data.length) * 4)
+        this.onVolume?.(this.amp)
+        if (this.env && this.ctx) {
+          // 音量门限：包络决定"何时张口、张多大"，音量决定"这一刻是否真在出声"，
+          // 两者相乘 → 时间轴错位或静音段都不会出现凭空张合的嘴。
+          const gate = Math.min(1, this.amp * 3)
+          this.onMouth?.(this.env.at(this.ctx.currentTime - this.startedAt) * (0.35 + 0.65 * gate))
+        } else {
+          this.onMouth?.(this.amp)
+        }
+      } catch (e) {
+        console.error('口型帧异常（跳过本帧）', e)
       }
       requestAnimationFrame(tick)
     }

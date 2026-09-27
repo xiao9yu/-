@@ -241,9 +241,8 @@ class StreamingRecognizer:
             if model is None:
                 continue  # 无流式模型：不产出 partial，段末由批量转写兜底
             text = self._asr_generate(model, frame, is_final=False)
-            if text and text != self._partial:
-                self._partial = text
-                events.append(("partial", {"text": text}))
+            if text:
+                events.append(("partial", {"text": self._accumulate(text)}))
         return events
 
     def _finalize_asr(self) -> str:
@@ -253,8 +252,12 @@ class StreamingRecognizer:
             tail = self._asr_buf
             self._asr_buf = np.zeros(0, dtype=np.float32)
             text = self._asr_generate(model, tail, is_final=True)
-            if text.strip():
-                return text.strip()
+            full = self._accumulate(text).strip()
+            if full:
+                # 流式模型无模型级热词偏置（见 _asr_generate）：段末对累积全文做
+                # 与批量路径同一份的文本级热词纠正。
+                from .asr_service import hotword_correct
+                return hotword_correct(full)
         return self._batch_fallback()
 
     def _batch_fallback(self) -> str:
@@ -271,20 +274,32 @@ class StreamingRecognizer:
             logger.exception("批量转写降级失败")
             return ""
 
+    def _accumulate(self, text: str) -> str:
+        """增量模型的文本拼接：paraformer-zh-streaming 每次 generate 只吐本步新解码
+        的 token（实测 1.4.16 逐 600ms 步返回 '你'→'好请'→'介绍一下' 这类增量片段，
+        串接即整句），段末的 is_final 调用再吐尾部残余。
+
+        防御性兼容返回**累积文本**的实现：新文本以旧 partial 开头视为全量替换，
+        避免模型版本升级行为变化后文本被串接重复（如 '你好' 接 '你好' 变 '你好你好'）。
+        """
+        if not text:
+            return self._partial
+        if text.startswith(self._partial):
+            self._partial = text
+        else:
+            self._partial += text
+        return self._partial
+
     def _asr_generate(self, model, frame: np.ndarray, *, is_final: bool) -> str:
+        # 注意：不要传 model-level hotword——该参数只在 seaco/contextual-paraformer
+        # 变体上生效，paraformer-zh-streaming（本项目配置）会静默忽略它，等于无效
+        # 配置埋雷；领域热词改在段末对累积全文做文本级纠正（_finalize_asr）。
         try:
-            kwargs = {}
-            hotword = _hotword_str()
-            if hotword:
-                # 模型级热词（seaco/paraformer-streaming 原生支持）：解码时对领域词加偏置，
-                # 与批量路径的文本级纠正互补——批量 paraformer-zh 无此能力才退而求其次。
-                kwargs["hotword"] = hotword
             res = model.generate(
                 input=frame, cache=self._asr_cache, is_final=is_final,
                 chunk_size=ASR_CHUNK_SIZE,
                 encoder_chunk_look_back=ENC_LOOK_BACK,
                 decoder_chunk_look_back=DEC_LOOK_BACK,
-                **kwargs,
             )
         except Exception:
             logger.exception("流式 ASR 推理失败")
@@ -292,17 +307,6 @@ class StreamingRecognizer:
         if not res:
             return ""
         return str(res[0].get("text") or "").strip()
-
-
-def _hotword_str() -> str:
-    """领域热词 → 空格分隔串（seaco 模型级 hotword 的字符串格式：每个词一个 token）。
-
-    直接取自 asr_service 同一份 settings 配置，保证两条路径热词一致；每次现算不缓存
-    （几十个词的分割开销可忽略，测试 monkeypatch settings 也无需复位缓存）。
-    """
-    from .asr_service import hotword_terms
-
-    return " ".join(hotword_terms())
 
 
 # ---------- 工具 ----------

@@ -90,6 +90,10 @@ export class MouthEnvelope {
     const segs = this.schedule.segments
     if (!segs.length) return 0
     while (this.i < segs.length && t > segs[this.i].t1) this.i++
+    // 游标越过末音节（i == segs.length）：闭嘴返回。此处必须先做越界保护——
+    // 否则下面的回扫会读 segs[segs.length].t0 抛 TypeError（音频比时间轴略长时
+    // 必现），RAF 帧循环因此死掉，表现为"播完第一句后口型静默冻结"。
+    if (this.i >= segs.length) return 0
     while (this.i > 0 && t < segs[this.i].t0) this.i--
     const g = segs[this.i]
     if (!g || t < g.t0 || t > g.t1) return 0

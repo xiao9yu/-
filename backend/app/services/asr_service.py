@@ -6,6 +6,7 @@
 disable_update=True 不联网检查更新。
 """
 import logging
+import re
 import threading
 
 from ..config import settings
@@ -47,21 +48,50 @@ def hotword_terms() -> list[str]:
     return list(dict.fromkeys(t.strip() for t in settings.asr_hotwords.split(",") if t.strip()))
 
 
+def hotword_correct(text: str) -> str:
+    """文本级热词纠错（批量与流式共用）：funasr 的 postprocess_hotwords 工具。
+
+    paraformer-zh 没有模型级 hotword 偏置（该能力只在 seaco/contextual 变体上），
+    两条路径都改为对**最终文本**做拼音模糊纠正——通用模型把"向量召回"听成
+    "项链召回"这类领域词错误，会按热词表纠回（依赖 pypinyin + rapidfuzz）。
+    纠错失败静默返回原文：热词是锦上添花，不能因它把整段转写变成异常。
+    """
+    terms = hotword_terms()
+    if not terms:
+        return text
+    try:
+        return _apply_hotword_postprocess(text, terms)
+    except Exception:
+        logger.exception("热词纠错失败（回退原文）")
+        return text
+
+
+def _apply_hotword_postprocess(text: str, terms: list[str]) -> str:
+    """funasr 文本级纠正的调用点（测试 monkeypatch 的 seam）：
+    入参去空格后的整句文本，返回纠正后的整句文本（未命中返回原句）。"""
+    from funasr.utils.postprocess_hotwords import apply_postprocess_hotwords_to_results
+    results = apply_postprocess_hotwords_to_results(
+        [{"text": text}], {"postprocess_hotwords": terms})
+    fixed = str(results[0].get("text") or "").strip()
+    return fixed or text
+
+
+_CJK_SPACE = re.compile(r"(?<=[一-鿿])\s+(?=[一-鿿])")
+
+
 def transcribe(wav_bytes: bytes) -> str:
     """16k 单声道 WAV 字节 → 转写文本。模型未就绪抛 ASRUnavailableError；空结果返回 ""。
 
-    领域热词走文本级 postprocess_hotwords（AutoModel 层、模型无关）：批量 paraformer-zh
-    没有模型级 hotword 偏置，改用拼音模糊纠正——通用模型把"向量召回"听成"项链召回"
-    这类领域词错误，会在最终文本上按热词表纠回（funasr 1.2+ 特性；依赖 pypinyin）。
+    paraformer-zh 输出为逐字空格分隔（token 痕迹）：先去除**汉字之间**的空格
+    （拉丁词间空格保留，"AI Agent" 不会被并成 "AIAgent"），再做热词纠错——
+    matcher 的滑动窗口按目标词长度 ±1 扫原始文本，带空格时 "向 量 召 回" 会被
+    切碎、只替换前半截留下尾巴（"向量召回 回"），连续文本上才能整词匹配。
     """
     model = get_asr()
     if model is None:
         raise ASRUnavailableError("语音识别未就绪，请打字提问")
-    kwargs = {}
-    terms = hotword_terms()
-    if terms:
-        kwargs["postprocess_hotwords"] = terms
-    results = model.generate(input=wav_bytes, **kwargs)
+    results = model.generate(input=wav_bytes)
     if not results:
         return ""
-    return str(results[0].get("text") or "").strip()
+    text = _CJK_SPACE.sub("", str(results[0].get("text") or "").strip())
+    return hotword_correct(text)

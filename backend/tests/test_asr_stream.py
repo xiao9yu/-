@@ -20,18 +20,19 @@ class FakeVad:
 
 
 class FakeStreamAsr:
-    """逐次返回增量文本（FunASR 流式接口返回的是累计文本）。"""
+    """逐次返回**增量**文本（paraformer-zh-streaming 实测行为：每次 generate 只吐
+    本步新解码的 token，串接即整句——不是累计文本）。"""
 
     def __init__(self, texts):
         self.texts = list(texts)
         self.final_calls = 0
-        self.hotwords: list[str | None] = []
+        self.extra_kwargs: list[dict] = []
 
     def generate(self, input=None, cache=None, is_final=False, chunk_size=None,
-                 encoder_chunk_look_back=None, decoder_chunk_look_back=None, hotword=None):
+                 encoder_chunk_look_back=None, decoder_chunk_look_back=None, **kwargs):
         if is_final:
             self.final_calls += 1
-        self.hotwords.append(hotword)
+        self.extra_kwargs.append(dict(kwargs))
         return [{"text": self.texts.pop(0) if self.texts else ""}]
 
 
@@ -42,10 +43,17 @@ def _pcm(ms: int, amp: int = 1000) -> bytes:
 
 @pytest.fixture(autouse=True)
 def reset_module_state(monkeypatch):
-    """流式模型是进程级懒加载单例：每个用例前后复位，避免相互污染。"""
+    """流式模型是进程级懒加载单例：每个用例前后复位，避免相互污染。
+
+    热词纠正（asr_service.hotword_correct）在真实实现里会 import funasr，
+    单测一律替换为恒等函数；需要验证纠错行为的用例自行覆盖。
+    """
+    from app.services import asr_service
+
     monkeypatch.setattr(asr_stream, "_loaded", False)
     monkeypatch.setattr(asr_stream, "_vad_model", None)
     monkeypatch.setattr(asr_stream, "_stream_model", None)
+    monkeypatch.setattr(asr_service, "hotword_correct", lambda t: t)
     yield
 
 
@@ -72,8 +80,8 @@ def test_available_true_when_vad_loaded(monkeypatch):
 
 
 def test_feed_emits_partial_then_segment_end(monkeypatch):
-    """说话中出 partial，VAD 判定端点后出 segment_end（文本取自流式 ASR 收尾）。"""
-    asr = FakeStreamAsr(["你", "你好"])
+    """说话中出 partial，VAD 判定端点后出 segment_end（增量片段串接为最终文本）。"""
+    asr = FakeStreamAsr(["你", "好"])
     _preload(monkeypatch, FakeVad([[[0, -1]], [], [], [[0, 600]]]), asr)
     rec = asr_stream.StreamingRecognizer()
     got = []
@@ -83,6 +91,34 @@ def test_feed_emits_partial_then_segment_end(monkeypatch):
                    ("segment_end", {"text": "你好", "duration_ms": 800})]
     assert asr.final_calls == 1
     assert rec.speaking is False and rec.partial == ""
+
+
+def test_partials_accumulate_incremental_fragments(monkeypatch):
+    """增量模型：每个 600ms 步只吐新 token，partial 必须是累积文本而非片段。"""
+    asr = FakeStreamAsr(["你", "好", "请", "介绍"])
+    _preload(monkeypatch, FakeVad([[[0, -1]]]), asr)
+    rec = asr_stream.StreamingRecognizer()
+    got = []
+    for _ in range(9):          # 9×200ms = 3 个 600ms 步长
+        got += rec.feed(_pcm(200))
+    got += rec.finish()
+    assert got == [("partial", {"text": "你"}),
+                   ("partial", {"text": "你好"}),
+                   ("partial", {"text": "你好请"}),
+                   ("segment_end", {"text": "你好请介绍", "duration_ms": 1800})]
+
+
+def test_accumulate_tolerates_cumulative_model(monkeypatch):
+    """防御：若模型版本行为变为返回累积文本（新文本以旧 partial 开头），
+    视为全量替换而非串接，不产生"你好你好"式重复。"""
+    asr = FakeStreamAsr(["你好", "你好呀"])
+    _preload(monkeypatch, FakeVad([[[0, -1]], [], [[0, 600]]]), asr)
+    rec = asr_stream.StreamingRecognizer()
+    got = []
+    for _ in range(3):
+        got += rec.feed(_pcm(200))
+    assert got == [("partial", {"text": "你好"}),
+                   ("segment_end", {"text": "你好呀", "duration_ms": 600})]
 
 
 def test_preroll_restores_speech_onset(monkeypatch):
@@ -164,32 +200,31 @@ def test_float_to_wav16_roundtrip_header():
     assert b"fmt " in wav[:20]
 
 
-def test_stream_asr_receives_hotword(monkeypatch):
-    """模型级热词：流式推理每次 generate 都带空格分隔的热词串（seaco 字符串格式）。"""
-    asr = FakeStreamAsr(["向量", "向量召回"])
-    _preload(monkeypatch, FakeVad([[[0, -1]]]), asr)
-    rec = asr_stream.StreamingRecognizer()
-    for _ in range(3):          # 3×200ms 才凑满 600ms 步长触发一次流式推理
-        rec.feed(_pcm(200))
-    assert asr.hotwords and all(h is not None for h in asr.hotwords)
-    assert "向量召回" in asr.hotwords[0]
-
-
-def test_stream_asr_omits_hotword_when_disabled(monkeypatch):
-    """热词配置置空：流式推理不传 hotword（与关闭前协议一致）。"""
+def test_segment_end_applies_hotword_correction_on_full_text(monkeypatch):
+    """热词纠正在段末对**累积全文**执行一次（增量片段逐个纠会留下"向量召回回"式尾巴）。"""
     from app.services import asr_service
 
-    monkeypatch.setattr(asr_service.settings, "asr_hotwords", "")
-    asr = FakeStreamAsr(["你好", "你好呀"])
-    _preload(monkeypatch, FakeVad([[[0, -1]]]), asr)
+    fixed: list[str] = []
+    monkeypatch.setattr(asr_service, "hotword_correct",
+                        lambda t: fixed.append(t) or "向量召回✓")
+    asr = FakeStreamAsr(["向量", "召回"])
+    _preload(monkeypatch, FakeVad([[[0, -1]], [], [[0, 600]]]), asr)
     rec = asr_stream.StreamingRecognizer()
+    got = []
     for _ in range(3):
+        got += rec.feed(_pcm(200))
+    assert got == [("partial", {"text": "向量"}),
+                   ("segment_end", {"text": "向量召回✓", "duration_ms": 600})]
+    assert fixed == ["向量召回"]       # 纠错输入是串接后的整句，而非末片段
+
+
+def test_generate_passes_no_model_level_hotword(monkeypatch):
+    """paraformer-zh-streaming 无模型级 hotword 能力（只有 seaco/contextual 变体有）：
+    generate 不传 hotword 参数——传了会被静默忽略，等于埋无效配置。"""
+    asr = FakeStreamAsr(["你好"])
+    _preload(monkeypatch, FakeVad([[[0, -1]], [[0, 400]]]), asr)
+    rec = asr_stream.StreamingRecognizer()
+    for _ in range(2):
         rec.feed(_pcm(200))
-    assert asr.hotwords and all(h is None for h in asr.hotwords)
-
-
-def test_hotword_str_joins_terms(monkeypatch):
-    from app.services import asr_service
-
-    monkeypatch.setattr(asr_service.settings, "asr_hotwords", "精排, 向量召回 ")
-    assert asr_stream._hotword_str() == "精排 向量召回"
+    assert asr.final_calls == 1
+    assert all("hotword" not in k for k in asr.extra_kwargs)
