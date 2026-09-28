@@ -109,3 +109,72 @@ def test_sigmoid_bounds_and_midpoint():
     assert sigmoid(0) == pytest.approx(0.5)
     assert 0 < sigmoid(-8) < 0.01
     assert 0.99 < sigmoid(8) < 1
+
+
+# ---------------- NLI 忠实度（eval/nli_scorer.py 纯函数） ----------------
+
+def test_extract_label_normalizes_pipeline_output_shapes():
+    from eval.nli_scorer import extract_label
+    assert extract_label({"labels": ["蕴涵"]}) == "entailment"
+    assert extract_label({"label": "蕴含"}) == "entailment"          # 口语写法兼容
+    assert extract_label({"labels": ["中立"], "scores": [0.9]}) == "neutral"
+    assert extract_label({"labels": ["矛盾"]}) == "contradiction"
+    assert extract_label("entailment") == "entailment"
+    assert extract_label({"labels": [1]}) == "entailment"            # 裸 id 兜底（label_mapping）
+    assert extract_label({"labels": [0]}) == "contradiction"
+    assert extract_label({"labels": [2]}) == "neutral"
+    assert extract_label({"scores": [0.9]}) == "unknown"             # 缺标签不猜
+
+
+def test_nli_count_labels_and_rate_pure():
+    from eval.nli_scorer import count_labels, entailment_rate
+    # label_mapping：矛盾=0、蕴涵=1、中立=2
+    counts = count_labels([1, 2, 0, 1, 9])
+    assert counts == {"entailment": 2, "neutral": 1, "contradiction": 1, "unknown": 1}
+    assert entailment_rate(counts) == pytest.approx(2 / 4)      # unknown 不进分母
+    assert entailment_rate({"entailment": 0, "neutral": 0, "contradiction": 0, "unknown": 3}) is None
+
+
+def test_nli_entailment_rate_counts_and_rates():
+    """编排测试：fake model/tok 走完整批量推理路径（无需 torch）。"""
+    from eval.nli_scorer import nli_entailment_rate
+
+    class _Tok:
+        def __call__(self, prems, hyps, **kw):
+            assert len(prems) == 4 and len(hyps) == 4
+            return {"input_ids": [], "attention_mask": [], "token_type_ids": []}
+
+    class _Logits:
+        def __init__(self, ids):
+            self._ids = ids
+
+        def argmax(self, dim=-1):
+            return type("T", (), {"tolist": lambda s: self._ids})()
+
+    class _Model:
+        def __call__(self, **kw):
+            return type("O", (), {"logits": _Logits([1, 2, 0, 1])})()
+
+    pairs = [["资料A", "句1"], ["资料B", "句2"], ["资料C", "句3"], ["资料D", "句4"]]
+    rate, counts = nli_entailment_rate(pairs, (_Model(), _Tok()))
+    assert rate == pytest.approx(2 / 4)
+    assert counts == {"entailment": 2, "neutral": 1, "contradiction": 1, "unknown": 0}
+
+
+def test_nli_entailment_rate_none_for_empty_or_unavailable():
+    from eval.nli_scorer import nli_entailment_rate
+    assert nli_entailment_rate([], None) == (None, {})
+    assert nli_entailment_rate([["a", "b"]], None) == (None, {})
+
+
+def test_nli_entailment_rate_unknown_on_inference_failure():
+    """推理炸了不猜：全部计入 unknown、不给 0% 假结论、不抛异常炸评测。"""
+    from eval.nli_scorer import nli_entailment_rate
+
+    class _Boom:
+        def __call__(self, *a, **k):
+            raise RuntimeError("boom")
+
+    rate, counts = nli_entailment_rate([["资料", "句"]], (_Boom(), _Boom()))
+    assert rate is None
+    assert counts["unknown"] == 1

@@ -27,3 +27,6 @@ edge-tts>=7.0
 # funasr postprocess_hotwords 模糊匹配依赖（拼音键 + 模糊比对；仅文本级热词纠正需要）
 pypinyin>=0.51
 rapidfuzz>=3.0
+# modelscope 本地模型直载（funasr ASR + eval/nli_scorer 中文 NLI）读配置走 fileio，需要 simplejson；
+# 2026-09-28 踩坑：首次加载报 ModuleNotFoundError: No module named 'simplejson'
+simplejson>=3.19

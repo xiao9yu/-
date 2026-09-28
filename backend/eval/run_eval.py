@@ -19,6 +19,8 @@
   · citation_validity 回答里 [n] 编号未越界的比例（越界 = 幻觉引用）
   · faithfulness_proxy 回答句 vs 其被引用 chunk 的 reranker 相关度均值
                       —— **代理指标**：衡量语义相关，不等价于严格蕴含（NLI）
+  · faithfulness_nli   回答句被其引用 chunk 严格蕴含的比例（中文 NLI 三分类：
+                      蕴涵=忠实，矛盾/中立=不忠实；模型不可用时降级为 None）
   · negative_ok      负样本未产生引用的比例（检验"资料不足不编造"）
 """
 from __future__ import annotations
@@ -162,6 +164,12 @@ def run(args: argparse.Namespace) -> dict:
         t1 = time.time()
         reranker = get_reranker()
         print(f"[准备] reranker={'就绪' if reranker else '不可用(降级)'} 用时 {time.time() - t1:.1f}s")
+    nli_scorer_obj = None
+    if args.with_llm and not args.no_nli:
+        from eval import nli_scorer
+        t2 = time.time()
+        nli_scorer_obj = nli_scorer.get_nli_scorer()
+        print(f"[准备] nli={'就绪' if nli_scorer_obj else '不可用(降级)'} 用时 {time.time() - t2:.1f}s")
 
     items = load_qa(_QA_PATH)
     if args.limit:
@@ -219,6 +227,13 @@ def run(args: argparse.Namespace) -> dict:
             else:
                 row["faithfulness_proxy"] = None
                 row["faithfulness_n"] = 0
+            if pairs and nli_scorer_obj is not None:
+                from eval import nli_scorer
+                row["faithfulness_nli"], row["faithfulness_nli_labels"] = \
+                    nli_scorer.nli_entailment_rate(pairs, nli_scorer_obj)
+            else:
+                row["faithfulness_nli"] = None
+                row["faithfulness_nli_labels"] = None
             if not expected:      # 负样本：不应产生引用
                 row["negative_ok"] = (len(citations) == 0 and not parse_refs(answer))
         else:
@@ -258,6 +273,10 @@ def summarize(rows: list[dict], args, user: str, n_chunks: int) -> dict:
         groups.setdefault(r["group"], []).append(r)
 
     def agg(rs: list[dict]) -> dict:
+        merged: dict[str, int] = {}
+        for r in rs:
+            for k, v in (r.get("faithfulness_nli_labels") or {}).items():
+                merged[k] = merged.get(k, 0) + v
         return {
             "n": len(rs),
             "hit@1": mean([r["hit@1"] for r in rs]),
@@ -268,6 +287,8 @@ def summarize(rows: list[dict], args, user: str, n_chunks: int) -> dict:
             "citation_validity": mean([r.get("citation_validity") for r in rs]),
             "cited_sentence_ratio": mean([r.get("cited_sentence_ratio") for r in rs]),
             "faithfulness_proxy": mean([r.get("faithfulness_proxy") for r in rs]),
+            "faithfulness_nli": mean([r.get("faithfulness_nli") for r in rs]),
+            "faithfulness_nli_labels": merged,
             "empty_retrieval_rate": mean([1.0 if r["empty_retrieval"] else 0.0 for r in rs]),
             "avg_retrieve_ms": mean([r.get("retrieve_ms") for r in rs]),
             "avg_gen_ms": mean([r.get("gen_ms") for r in rs]),
@@ -280,6 +301,7 @@ def summarize(rows: list[dict], args, user: str, n_chunks: int) -> dict:
         "meta": {
             "user": user, "n_chunks": n_chunks, "top_k": args.top_k,
             "rerank": not args.no_rerank, "with_llm": args.with_llm,
+            "nli": (not args.no_nli) if args.with_llm else False,
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         },
         "overall": agg(pos),
@@ -309,7 +331,7 @@ def print_report(res: dict) -> None:
     print("=" * 74)
     head = f"{'分组':<14}{'n':>4}{'hit@1':>8}{'hit@3':>8}{'hit@5':>8}{'MRR':>8}"
     if m["with_llm"]:
-        head += f"{'引用准':>8}{'合法率':>8}{'覆盖':>7}{'忠实度':>8}{'出错':>7}"
+        head += f"{'引用准':>8}{'合法率':>8}{'覆盖':>7}{'忠实度':>8}{'NLI忠实':>8}{'出错':>7}"
     print(head)
     print("-" * len(head))
     for g, a in res["by_group"].items():
@@ -318,6 +340,7 @@ def print_report(res: dict) -> None:
         if m["with_llm"]:
             line += (f"{fmt(a['source_precision']):>8}{fmt(a['citation_validity']):>8}"
                      f"{fmt(a['cited_sentence_ratio']):>7}{fmt(a['faithfulness_proxy']):>8}"
+                     f"{fmt(a['faithfulness_nli']):>8}"
                      f"{fmt(a['error_rate']):>7}")
         print(line)
     o = res["overall"]
@@ -326,9 +349,15 @@ def print_report(res: dict) -> None:
     if m["with_llm"]:
         line += (f"{fmt(o['source_precision']):>8}{fmt(o['citation_validity']):>8}"
                  f"{fmt(o['cited_sentence_ratio']):>7}{fmt(o['faithfulness_proxy']):>8}"
+                 f"{fmt(o['faithfulness_nli']):>8}"
                  f"{fmt(o['error_rate']):>7}")
     print("-" * len(head))
     print(line)
+    if m["with_llm"] and o.get("faithfulness_nli_labels"):
+        lb = o["faithfulness_nli_labels"]
+        print(f"\nNLI 忠实度三分类（回答句 vs 被引用资料）：蕴涵 {lb.get('entailment', 0)} / "
+              f"中立 {lb.get('neutral', 0)} / 矛盾 {lb.get('contradiction', 0)}"
+              + (f" / 未知 {lb.get('unknown', 0)}" if lb.get("unknown") else ""))
     if "negative" in res:
         neg = res["negative"]
         print(f"\n负样本（{neg['n']} 题）：无误引用率={fmt(neg['no_citation_rate'])}  "
@@ -348,6 +377,7 @@ def main() -> None:
     ap.add_argument("--user", default="student", help="以哪个用户视角评测（决定可见的私有库）")
     ap.add_argument("--top-k", type=int, default=5)
     ap.add_argument("--with-llm", action="store_true", help="跑端到端生成（消耗 LLM 调用）")
+    ap.add_argument("--no-nli", action="store_true", help="关闭 NLI 忠实度（仅保留 reranker 代理指标）")
     ap.add_argument("--no-rerank", action="store_true", help="关闭精排，用于对照")
     ap.add_argument("--limit", type=int, default=0, help="只跑前 N 题（调试用）")
     ap.add_argument("--no-warmup", action="store_true", help="跳过检索链路预热（测冷启动时用）")
