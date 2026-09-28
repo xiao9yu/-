@@ -1,0 +1,1699 @@
+{
+  "meta": {
+    "user": "student",
+    "n_chunks": 376,
+    "top_k": 5,
+    "rerank": true,
+    "with_llm": true,
+    "nli": true,
+    "generated_at": "2026-09-28 21:37:35"
+  },
+  "overall": {
+    "n": 35,
+    "hit@1": 0.7714285714285715,
+    "hit@3": 0.9428571428571428,
+    "hit@5": 0.9714285714285714,
+    "mrr": 0.85,
+    "source_precision": 0.7647058823529411,
+    "citation_validity": 1.0,
+    "cited_sentence_ratio": 0.8634353741496599,
+    "faithfulness_proxy": 0.380189847757038,
+    "faithfulness_nli": 0.7268395819866409,
+    "faithfulness_nli_labels": {
+      "entailment": 131,
+      "neutral": 43,
+      "contradiction": 4,
+      "unknown": 0
+    },
+    "empty_retrieval_rate": 0.02857142857142857,
+    "avg_retrieve_ms": null,
+    "avg_gen_ms": 9584.371428571429,
+    "error_rate": 0.0
+  },
+  "by_group": {
+    "提示词工程": {
+      "n": 8,
+      "hit@1": 0.875,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.9375,
+      "source_precision": 0.7395833333333334,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 0.8302083333333333,
+      "faithfulness_proxy": 0.18976625302852204,
+      "faithfulness_nli": 0.7177884615384615,
+      "faithfulness_nli_labels": {
+        "entailment": 38,
+        "neutral": 11,
+        "contradiction": 1,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.0,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9710.625,
+      "error_rate": 0.0
+    },
+    "人工智能导论": {
+      "n": 4,
+      "hit@1": 0.75,
+      "hit@3": 0.75,
+      "hit@5": 0.75,
+      "mrr": 0.75,
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 0.75,
+      "faithfulness_proxy": 0.7139590502052872,
+      "faithfulness_nli": 0.6666666666666666,
+      "faithfulness_nli_labels": {
+        "entailment": 4,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.25,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9197.75,
+      "error_rate": 0.0
+    },
+    "面试话术": {
+      "n": 3,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 0.7714285714285714,
+      "faithfulness_proxy": 0.34607041822439344,
+      "faithfulness_nli": 0.5416666666666666,
+      "faithfulness_nli_labels": {
+        "entailment": 10,
+        "neutral": 8,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.0,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9483.0,
+      "error_rate": 0.0
+    },
+    "RAG": {
+      "n": 7,
+      "hit@1": 0.5714285714285714,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.7142857142857143,
+      "source_precision": 0.5619047619047619,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 0.8282312925170068,
+      "faithfulness_proxy": 0.4953580271010897,
+      "faithfulness_nli": 0.7210884353741497,
+      "faithfulness_nli_labels": {
+        "entailment": 29,
+        "neutral": 14,
+        "contradiction": 2,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.0,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9673.285714285714,
+      "error_rate": 0.0
+    },
+    "AI Agent": {
+      "n": 5,
+      "hit@1": 0.6,
+      "hit@3": 0.8,
+      "hit@5": 1.0,
+      "mrr": 0.75,
+      "source_precision": 0.5966666666666667,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 0.96,
+      "faithfulness_proxy": 0.34477755671085153,
+      "faithfulness_nli": 0.8880952380952382,
+      "faithfulness_nli_labels": {
+        "entailment": 31,
+        "neutral": 3,
+        "contradiction": 1,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.0,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9898.4,
+      "error_rate": 0.0
+    },
+    "AI 核心概念": {
+      "n": 3,
+      "hit@1": 0.6666666666666666,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.8333333333333334,
+      "source_precision": 0.7222222222222222,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.4009570607974942,
+      "faithfulness_nli": 0.9523809523809524,
+      "faithfulness_nli_labels": {
+        "entailment": 14,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.0,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9654.0,
+      "error_rate": 0.0
+    },
+    "答案在尾部": {
+      "n": 5,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "cited_sentence_ratio": 0.9333333333333333,
+      "faithfulness_proxy": 0.3667942477135412,
+      "faithfulness_nli": 0.6,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 5,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "empty_retrieval_rate": 0.0,
+      "avg_retrieve_ms": null,
+      "avg_gen_ms": 9272.2,
+      "error_rate": 0.0
+    }
+  },
+  "negative": {
+    "n": 2,
+    "no_citation_rate": 1.0,
+    "empty_retrieval_rate": 1.0
+  },
+  "items": [
+    {
+      "id": "pe-01",
+      "group": "提示词工程",
+      "question": "什么是 Prompt Engineering（提示词工程）？它解决什么问题？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 11158,
+      "error": null,
+      "answer": "Prompt Engineering 就是提示词工程，它要解决的是“怎么把话说清楚”这个问题，也就是怎么让模型听懂你想要什么[1][4]。常见的做法包括系统提示词设计、少样本示例和思维链引导这些技巧[1][4]。它主要针对的是简单任务，这种情况下提示词最重要，把话说清楚就行[1]。不过要提醒你，写提示词不是把所有资料都塞进去，无关信息反而会增加模型找重点的难度，也会提高延迟和成本[5]。而且提示词需要反复调整，不是写完一版就结束了，得用样例不断校正，每次只改一个变量，才能知道是哪条规则在起作用[5]。另外，提示词工程也不是万能的，多 Agent 或多模块协作的时候，一个 Prompt 很难处理所有任务，这时候就需要提示词路由，先识别请求类型再选择对应的处理链路[2]。",
+      "n_citations": 5,
+      "citation_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.3724046253563268,
+      "faithfulness_n": 8,
+      "faithfulness_nli": 0.75,
+      "faithfulness_nli_labels": {
+        "entailment": 6,
+        "neutral": 1,
+        "contradiction": 1,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-02",
+      "group": "提示词工程",
+      "question": "写 Prompt 为什么要拆成四要素？这四要素分别是什么？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9528,
+      "error": null,
+      "answer": "写 Prompt 拆成四要素，主要是为了让模型清楚知道该用什么视角、完成什么动作、在什么背景下做、以及结果要长什么样。因为如果输入没有说明任务边界、所需信息和结果形式，模型就只能自己补全这些条件，输出就容易偏题或者编造[2]。而且像代码评审、方案设计、复杂分析这类任务，用四要素框架能把边界讲清楚，模型才能确定分析重点并按指定粒度返回结果[1][3]。\n\n这四要素分别是：Role，也就是角色，告诉模型该用哪个领域的知识和语气，通常放在 Prompt 开头，比如“你是一位 10 年经验的 Java 架构师”[1][2]；Task，也就是任务，说明要完成什么具体动作，一般紧跟角色定义，比如“请评审以下代码的性能问题”[1][2]；Context，也就是上下文，补充和任务相关的背景信息，放在中间位置，比如“当前线上 QPS 2000，响应时间超 500ms”[1][2]；Format，也就是格式，规定输出长什么样，放在 Prompt 结尾，比如“输出 JSON，包含 bottleneck、solution 两个字段”[1][2]。把角色和格式分别放在输入两端，还能利用“Lost in the Middle”效应，减少关键约束落在长上下文中部而被忽略的风险[2][3]。",
+      "n_citations": 5,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.8,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.8,
+      "faithfulness_proxy": 0.14639580472570732,
+      "faithfulness_n": 13,
+      "faithfulness_nli": 0.6923076923076923,
+      "faithfulness_nli_labels": {
+        "entailment": 9,
+        "neutral": 4,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-03",
+      "group": "提示词工程",
+      "question": "为什么不建议把 Prompt 写成一份很长的说明书？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9411,
+      "error": null,
+      "answer": "不建议把 Prompt 写成一份很长的说明书，主要是因为堆得太满反而会让模型抓不住重点。如果把背景、限制和示例全都塞进一条 Prompt 里，模型不一定更稳定，重复信息会增加输入成本，互相冲突的要求还会让输出偏离任务[4]。而且无关信息会加大模型定位重点的难度，也会提高延迟和输入成本[1]。所以写 Prompt 关键不在于长度，而在于有没有把任务说清楚，通常交代好 Role、Task、Context、Format 这四件事就够了[2][4]。像查 API 用法、翻译一句话、改一小段文案这种简单任务，一句话 Prompt 就够了；只有代码评审、方案设计、复杂分析这类任务，才适合用四要素框架把边界讲清楚，但也不用把无关背景一股脑塞进去[1]。",
+      "n_citations": 4,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.75,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.8,
+      "faithfulness_proxy": 0.08407248620091393,
+      "faithfulness_n": 5,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-04",
+      "group": "提示词工程",
+      "question": "什么是思维链（Chain-of-Thought）？它适合用在哪类任务上？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9815,
+      "error": null,
+      "answer": "思维链，也就是 Chain-of-Thought，简称 CoT，简单说就是让模型在给出最终答案之前，先把逐步推理的过程展示出来，这样能提升逻辑准确率，也有助于对抗幻觉[1]。它主要有基础、引导和结构化三种形态，最基础的用法就是直接加一句“请给出关键步骤后再回答”，复杂一点可以用引导式 CoT，让模型在回答前先检查几个问题[1]。它特别适合数学计算、逻辑推理和多步骤分析这类需要显式检查过程的任务[1]。另外在 Agent 规划里，CoT 也有两种用法，一种是隐式 CoT，就是在提示词里要求模型先分析目标、确定信息、列出工具再制定分步计划，另一种是显式 CoT，把它当作独立步骤，比如 ReAct 模式里的 Thought、Action、Observation，每个 Thought 就是一个 CoT 步骤[2]。不过要注意，普通模型可以要求给出简要推理步骤，但 reasoning model 不一定会暴露完整的内部推理链，工程中更适合要求它输出关键依据、检查步骤和最终结论[1]。",
+      "n_citations": 3,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6666666666666666,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.07996722507782131,
+      "faithfulness_n": 5,
+      "faithfulness_nli": 0.8,
+      "faithfulness_nli_labels": {
+        "entailment": 4,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-05",
+      "group": "提示词工程",
+      "question": "少样本学习（Few-shot）在 Prompt 里应该怎么用？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9325,
+      "error": null,
+      "answer": "少样本学习说白了，就是在提示词里给模型看几个示例，让它照着样子输出。它特别适合两种情况：一种是任务比较复杂，另一种是对输出格式要求比较严格。这时候给一到三个示例，往往比写一大段文字说明还管用，因为示例能直接告诉模型“输出应该长什么样”，比光说一句“请输出 JSON”要直观得多[2]。\n\n不过选示例也有讲究。最好挑和真实任务同类型的，尽量能覆盖到边缘情况，格式要足够清楚，必要时还可以用 XML 标签把示例包起来[2]。\n\n另外要提醒一句，少样本示例属于可选手段，不是所有任务都得加。用不用、用几个，得看任务复杂度、能接受的成本和实际效果，不能靠堆叠技巧来解决所有问题[1]。而且示例是会增加 Token 消耗的，到底启不启用，最好由评测结果来决定[1]。",
+      "n_citations": 5,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.5,
+      "faithfulness_proxy": 0.28152357162288744,
+      "faithfulness_n": 4,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 4,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-06",
+      "group": "提示词工程",
+      "question": "什么是 Lost in the Middle 效应？写 Prompt 时可以怎么利用它？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9446,
+      "error": null,
+      "answer": "Lost in the Middle 效应说的是，模型对放在上下文中间位置的关键信息，利用效果往往更差，而开头和结尾的信息更容易被注意到[2]。斯坦福大学的研究（Liu et al., 2023）也提到过这个现象[2]。所以在写 Prompt 的时候，可以把关键信息放在开头和结尾来提升召回率，具体做法就是 Role 放在开头、Format 放在结尾[1][3]，次要的内容放中间[4]。资料里还提到，资料条数最好不超过 5 到 8 条，太多了模型消化不过来[4]。",
+      "n_citations": 4,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.5,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.5248930129082177,
+      "faithfulness_n": 6,
+      "faithfulness_nli": 0.5,
+      "faithfulness_nli_labels": {
+        "entailment": 3,
+        "neutral": 3,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-07",
+      "group": "提示词工程",
+      "question": "角色扮演技巧在 Prompt 中有什么作用？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9444,
+      "error": null,
+      "answer": "根据现有资料，角色设定在提示词工程中被视为一种可选手段，它的作用是把任务、必要背景、约束和输出格式表达清楚，帮助模型更好地理解需要完成什么[1]。不过资料也强调，角色设定并不是必须使用的技巧，是否采用要看任务复杂度、可接受成本和实际效果，不能靠堆叠技巧来解决所有问题[1]。关于角色扮演技巧更具体的作用机制，目前资料里没有更详细的说明。",
+      "n_citations": 1,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.6666666666666666,
+      "faithfulness_proxy": 0.021454875517626183,
+      "faithfulness_n": 2,
+      "faithfulness_nli": 0.0,
+      "faithfulness_nli_labels": {
+        "entailment": 0,
+        "neutral": 2,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "pe-08",
+      "group": "提示词工程",
+      "question": "怎么用回归集来维护和反复调优 Prompt？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9558,
+      "error": null,
+      "answer": "用回归集来维护和反复调优 Prompt，核心思路是先把当前状态固定成一条基线，再每次只改一个地方，看结果到底有没有变好。具体来说，先选一批真实样例，把当前 Prompt、模型版本、采样参数和工具定义一起固化成基线[3]。样例要选十到三十条有代表性的输入，覆盖正常、边缘和异常场景[4]。然后固定模型、Temperature、System Prompt 和检索材料，避免变量混杂，同时记录格式合规率、事实错误率、字段缺失率和人工修改次数这些指标[4]。调整的时候每次只改一个 Prompt 变量，不然很难知道是哪条规则在起作用[4]。每次修改只解决已经观察到的失败类型，并同时检查旧样例有没有退化[3]。上线后还要保留失败样例，定期回放做回归测试，防止新规则修一个坏三个[4]。另外，模型或 API 版本变化后要重新跑回归集，不能假设旧 Prompt 会保持同样表现[2]。",
+      "n_citations": 4,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.875,
+      "faithfulness_proxy": 0.007418422818675774,
+      "faithfulness_n": 7,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 7,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ai-01",
+      "group": "人工智能导论",
+      "question": "什么是梯度下降？它的核心思想是什么？",
+      "expected": [
+        "人工智能导论知识库.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9366,
+      "error": null,
+      "answer": "梯度下降是机器学习里最常用的一种优化算法[1]。它的核心思想是沿着损失函数梯度的反方向，一步步迭代更新参数，让损失逐渐变小[1]。另外，学习率决定了每次更新的幅度，学习率太大会导致震荡发散，太小又会让收敛变得很慢[1]。",
+      "n_citations": 1,
+      "citation_sources": [
+        "人工智能导论知识库.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.1941553520832068,
+      "faithfulness_n": 3,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 3,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "人工智能导论知识库.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ai-02",
+      "group": "人工智能导论",
+      "question": "学习率设置得过大或过小分别会出现什么问题？",
+      "expected": [
+        "人工智能导论知识库.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10123,
+      "error": null,
+      "answer": "学习率设置得过大，最直接的问题就是训练不稳定，损失函数可能会剧烈震荡，甚至越来越大，根本降不下去。你可以想象成下山的时候步子迈得太大，本来该往谷底走，结果一步跨过了最低点，直接冲到对面山坡上去了，来回反复横跳，最后可能直接发散掉，模型根本学不到东西。设置得过小呢，虽然训练过程看起来比较平稳，损失函数也在慢慢下降，但问题是太慢了，收敛速度极慢，可能要花很长时间才能到达一个还不错的点。而且学习率太小还容易卡在局部最小值或者鞍点附近出不来，因为每次更新的步子太小，没有足够的动力跳出去。所以实际训练中一般不会固定一个学习率从头用到尾，常见做法是用学习率衰减策略，一开始用大一点的学习率快速下降，后期逐渐减小来精细收敛，或者用自适应优化器像Adam这种，它会给每个参数自动调整合适的学习率。",
+      "n_citations": 0,
+      "citation_sources": [],
+      "retrieval_source": "citations",
+      "source_precision": null,
+      "citation_validity": null,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.0,
+      "faithfulness_proxy": null,
+      "faithfulness_n": 0,
+      "faithfulness_nli": null,
+      "faithfulness_nli_labels": null,
+      "hit_sources": [],
+      "hit@1": 0.0,
+      "hit@3": 0.0,
+      "hit@5": 0.0,
+      "mrr": 0.0,
+      "empty_retrieval": true
+    },
+    {
+      "id": "ai-03",
+      "group": "人工智能导论",
+      "question": "SGD 和 Adam 优化器有什么区别？",
+      "expected": [
+        "人工智能导论知识库.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 8923,
+      "error": null,
+      "answer": "SGD 和 Adam 的主要区别在于：SGD 每次使用单样本梯度，收敛速度比较慢；而 Adam 采用自适应学习率，收敛更快也更稳定[1]。",
+      "n_citations": 1,
+      "citation_sources": [
+        "人工智能导论知识库.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.9483721171689108,
+      "faithfulness_n": 1,
+      "faithfulness_nli": 0.0,
+      "faithfulness_nli_labels": {
+        "entailment": 0,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "人工智能导论知识库.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ai-04",
+      "group": "人工智能导论",
+      "question": "什么是反向传播？",
+      "expected": [
+        "人工智能导论知识库.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 8379,
+      "error": null,
+      "answer": "反向传播是一种利用链式法则逐层计算梯度的算法，它是训练深度神经网络的基础算法，通常与梯度下降配合来完成参数的更新[1]。",
+      "n_citations": 1,
+      "citation_sources": [
+        "人工智能导论知识库.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.9993496813637441,
+      "faithfulness_n": 1,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 1,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "人工智能导论知识库.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "hr-01",
+      "group": "面试话术",
+      "question": "面试时被问到“你的优点是什么”该怎么回答？",
+      "expected": [
+        "高频问题话术.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9689,
+      "error": null,
+      "answer": "面试被问到“你的优点是什么”，你可以从这几个方向里挑一个最贴合自己的来说。比如你可以说自己做事讲究执行力，坚持今日事今日毕，工作忙、项目多的时候哪怕加班很晚也会坚持做完，对工作比较较真，对自己要求严格[1]。也可以说自己是个做事全力以赴的人，一旦确定目标就会用上全部力量直到成功，比如为了做实验可以连续两天不睡觉，为了紧急项目连续两个月不休息，为了面试提前做两个星期的功课[1]。还可以说自己表达能力强，乐于表达观点，上学时课堂踊跃发言、参加过演讲比赛，实习时也敢于表达，并认为这是对工作负责的表现[1]。另外也可以说自己善于带领别人一起工作，做项目负责人时能调动每个人的积极性，重视让每个人都能展示才能[1]。或者强调自己注重挖掘内在潜力，平时专心工作之外还利用业余时间学习充电，看专业书籍、浏览技术博客、参加技术论坛，同时关注市场需求变化，不断提升自己[1]。挑一个你最有真实经历支撑的优点来讲就行。",
+      "n_citations": 2,
+      "citation_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.7142857142857143,
+      "faithfulness_proxy": 0.9400961988049563,
+      "faithfulness_n": 5,
+      "faithfulness_nli": 0.8,
+      "faithfulness_nli_labels": {
+        "entailment": 4,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "hr-02",
+      "group": "面试话术",
+      "question": "面试被问“你怎么看待加班”时该怎么回答？",
+      "expected": [
+        "高频问题话术.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10121,
+      "error": null,
+      "answer": "面试被问到怎么看加班，你可以先反问一下对方，比如了解贵公司加班的频率和时长是怎样的，加班有没有相应的福利[1]。回答本身呢，可以从几个角度来说：一是如果你真心喜欢这份工作，花时间在自己喜欢的事情上其实是乐在其中的，而且干这行加班也难免[1]；二是年轻人多加点班也正常，公司让你加班说明领导信任你，加班过程还能帮你快速提升能力[1]；三是如果真要加班，你会先反思是不是自己能力不足或效率低才导致需要加班，如果是就补足自己、提高效率，减少加班，有工作需要或紧急情况加班没问题，但你不喜欢为了加班而加班、或者为了表现努力而特意加班，你更希望靠提高效率来减少无效加班，有计划地安排加班，这样能协调好工作和生活[1]；四是如果有需要你非常愿意配合进度加班，但你还是会尽量在周一到周五把预定内容做完，好好休息充好电，下周继续高效工作，你也喜欢这种高效氛围的团队[1]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.04004832563966047,
+      "faithfulness_n": 5,
+      "faithfulness_nli": 0.2,
+      "faithfulness_nli_labels": {
+        "entailment": 1,
+        "neutral": 4,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "hr-03",
+      "group": "面试话术",
+      "question": "面试官问“为什么从上家公司离职”该怎么回答？",
+      "expected": [
+        "高频问题话术.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 8639,
+      "error": null,
+      "answer": "这个问题可以从几个角度来答，你根据自己的实际情况挑一个最贴近的就行。比如你可以说，自己是外地来这边求发展，想在这座城市稳定下来[1]；也可以说上家公司项目近一年一直在维护更新，没什么新功能，工作比较稳定、量也少，但行业技术更新快，长期下来对自己的技术提升有影响，所以选择离职[1]。如果你之前在创业公司身兼数职，可以说那段时间虽然锻炼了综合能力，但自己更想专注于某个技术方向[1]；如果之前是外包公司，可以说合作项目一直不太稳定，想稳定发展[1]，或者项目结束后一直没有新项目[1]。还有几种情况：公司重组项目组、原来的项目不做了，新项目用的不是你想做的技术[1]；公司受疫情影响运营出问题、工资拖欠了三个月，生活压力大没办法才离职[1]；公司搬到别的城市希望你一起去，但父母在这边、你想留在这边发展，所以离职[1]。总之挑一个真实又不会给自己减分的理由，重点落到你想在新公司长期稳定发展上就好。",
+      "n_citations": 2,
+      "citation_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.6,
+      "faithfulness_proxy": 0.0580667302285636,
+      "faithfulness_n": 8,
+      "faithfulness_nli": 0.625,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 3,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-01",
+      "group": "RAG",
+      "question": "什么是 RAG？为什么需要 RAG？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 8556,
+      "error": null,
+      "answer": "RAG就是检索增强生成，英文叫Retrieval-Augmented Generation，简单说就是把信息检索和大语言模型绑在一起用[2]。它的核心流程是这样的：用户提问之后，先把问题向量化，然后到知识库里检索出相关的文档片段，再把这些片段和原始问题一起拼成提示词喂给大模型，让模型基于检索到的内容来回答，而不是只靠它训练时记住的东西[1][2]。\n\n那为什么需要RAG呢？主要是为了解决大模型的三个硬伤[1]。第一是知识时效性，大模型的训练数据有截止日期，没法覆盖最新的信息，比如昨天的新闻它就不知道；第二是幻觉问题，模型在不知道答案的时候会编造看似合理但其实错误的内容；第三是私有数据触达，像企业内部的文档、数据库、业务知识，大模型从来没见过的。所以RAG本质上就是给大模型配了一个开卷考试的能力，不知道的不瞎编，先去翻资料[1]。另外从工程角度看，RAG还能做到可溯源，要求模型只依据检索内容回答，查不到就说查不到[5]。",
+      "n_citations": 5,
+      "citation_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.7142857142857143,
+      "faithfulness_proxy": 0.6125771494297432,
+      "faithfulness_n": 6,
+      "faithfulness_nli": 0.8333333333333334,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-02",
+      "group": "RAG",
+      "question": "RAG 和微调（Fine-tuning）有什么区别？实际该怎么做技术选型？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 8635,
+      "error": null,
+      "answer": "RAG 和微调最本质的区别在于：微调是修改模型参数，相当于把知识“写进”模型里，就像让学生把书背下来；而 RAG 不修改参数，是从外部“检索”知识，相当于考试开卷、允许查资料[5]。从能力上看，RAG 擅长知识更新和溯源，微调则擅长行为、格式和风格的对齐[1][2]，所以微调更适合风格、格式、行为对齐这类场景，RAG 更适合知识注入和事实性问答[5]。选型时还要考虑几个现实因素：微调的知识更新需要重新训练、成本高，而且可解释性偏黑盒，不太清楚它为什么这么答；RAG 则只要更新文档库就行、成本低，还能溯源、知道答案来自哪个文档[5]。另外，长上下文并不能替代 RAG，因为在成本、精度、溯源和数据规模上 RAG 依然有优势[1][2]。所以实践中常见的做法是两者结合，而不是二选一[1][2]。",
+      "n_citations": 5,
+      "citation_sources": [
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.7885594357517005,
+      "faithfulness_n": 9,
+      "faithfulness_nli": 0.1111111111111111,
+      "faithfulness_nli_labels": {
+        "entailment": 1,
+        "neutral": 6,
+        "contradiction": 2,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.3333333333333333,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-03",
+      "group": "RAG",
+      "question": "什么是 RAG-First 原则？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9666,
+      "error": null,
+      "answer": "RAG-First 原则指的是，遇到业务需求时优先用 RAG 来验证效果，因为现在业务需求变化很快，RAG 换库不换脑，比微调更灵活[1]。具体选择策略是：先上 RAG 跑通验证，如果检索回来的知识是对的、但大模型的输出格式或风格不对，就再加微调；如果微调后效果还不达标，就把两者结合起来，比如用 RAFT 这类方案[1]。",
+      "n_citations": 1,
+      "citation_sources": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.939326968488239,
+      "faithfulness_n": 2,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 2,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-04",
+      "group": "RAG",
+      "question": "RAG 的检索环节有哪些常见的优化手段？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9910,
+      "error": null,
+      "answer": "RAG 的检索环节，常见的优化手段有这么几个。首先可以在索引层面做文章，比如用倒排文件索引先聚类分桶再桶内搜索，还常和 PQ 组合成 IVF-PQ 来省内存[1]。再就是控制好检索返回的候选数量，也就是 Top-K，K 太小容易漏召回，太大噪声多又贵[1]。检索方式上，实践中最常见的是混合检索，把向量检索和关键词检索 BM25 结合起来，兼顾语义和精确匹配，因为稀疏检索擅长精确匹配，稠密检索擅长语义泛化，两者正好互补[1]。召回之后还可以做重排，对召回结果再精排，这是 RAG 里性价比最高的提分环节之一，通常用交叉编码器把 query 和 doc 拼在一起打分，准但慢，所以只用于精排 top-k[1]。另外，检索找到结果之后还有一个“增强”环节，包括按相关度排序、去重、把不同检索通道的结果融合、组织上下文拼接以及注入来源等元数据[3]。评测方面，常用的指标有召回率、精确率、Recall@k、MRR 和 NDCG 这些[1]。至于更细的调参方法，资料里没有展开。",
+      "n_citations": 5,
+      "citation_sources": [
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.4,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.75,
+      "faithfulness_proxy": 0.06860652617868021,
+      "faithfulness_n": 6,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 6,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf",
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.3333333333333333,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-05",
+      "group": "RAG",
+      "question": "什么是 Query Rewrite？它解决的是什么问题？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10584,
+      "error": null,
+      "answer": "Query Rewrite 就是查询改写，指的是在不改变用户原本意图的前提下，把用户的问题改写成更适合检索系统去召回的表达[1]。它解决的问题是：用户的问题往往不是为检索系统写的，比如“这个报错咋整？”“钱能退吗？”“线上那个限流问题是不是又来了？”这些话对人来说有上下文，但对检索系统来说很模糊，直接拿去检索效果不好[1]。常见的改写策略有几种，比如规范化改写，适合口语化、缩写或者上下文缺失的情况，把“钱能退吗”改成“退款政策、退款条件、退款流程”[1]；还有 Multi-Query，适合表达可能有多种说法的情况，同时检索“取消订阅”“关闭自动续费”“停止会员计划”[1]；另外还有 Query Decomposition，适合问题包含多个子问题，比如把“对比 Stripe 和 Square 的手续费和争议处理”拆成四个子问题[2]；Step-back Query 适合问题太细、缺背景的情况，先检索“订阅计费规则”再回答具体取消问题[2]；HyDE 适合查询太短、和文档形态差异大的情况，先生成假设答案，再用假设答案的向量去检索真实文档[2]；Self-Query 则适合问题里包含过滤条件，比如从“查 2025 年 Java 相关政策”里提取条件[2]。这里有个坑要注意，Query Rewrite 必须保留原始问题，不要只用改写后的查询，工程上可以让原始 query 和改写 query 一起召回再融合结果，否则改写模型一旦理解错意图，后面召回就全偏了[2]。在多轮对话里，Query 重写还要结合对话历史，把指代不明的问题重写成可以独立检索的完整问题，比如把“它有什么缺点？”改成“RAG 系统的混合检索方案有什么缺点？”[3]。",
+      "n_citations": 3,
+      "citation_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.3333333333333333,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.5,
+      "faithfulness_proxy": 0.41925646228972707,
+      "faithfulness_n": 9,
+      "faithfulness_nli": 0.5555555555555556,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 4,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.3333333333333333,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-06",
+      "group": "RAG",
+      "question": "什么是 Hybrid Search（混合检索）？它相比单路检索有什么好处？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10067,
+      "error": null,
+      "answer": "Hybrid Search 就是混合检索，简单说就是把向量检索和关键词检索结合起来用。向量检索负责语义相似，能找出意思相近的内容；关键词检索，比如 BM25 或者稀疏向量，负责匹配关键词，把包含相关词条的候选也捞出来[1][2]。然后把这两路召回的结果融合在一起，常见的融合方式有 RRF，也就是按排名位置来合并，或者用归一化加权分数来合并，融合之后再去重，最后进入 Rerank 环节[2]。\n\n它相比单路检索的好处在于，单一检索是有盲区的[1]。比如你的查询里经常出现错误码、产品型号、配置项或者专有名词，纯向量检索就很容易翻车；而如果文档高度结构化、关键词很少，混合检索带来的增益可能也有限[2]。所以混合检索的好处就是能同时兼顾语义理解和关键词匹配，整体更稳[2]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.5,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.8333333333333334,
+      "faithfulness_proxy": 0.6366121279049627,
+      "faithfulness_n": 6,
+      "faithfulness_nli": 0.8333333333333334,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "rag-07",
+      "group": "RAG",
+      "question": "Rerank（重排序）在 RAG 流程中起什么作用？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10295,
+      "error": null,
+      "answer": "Rerank 在 RAG 流程里就是对召回结果再做一次精排，算是性价比很高的提分环节[2]。它的做法是用更精确的 Cross-Encoder 模型，把查询和文档拼在一起输入、深度交互打分，对 Top-K 候选重新排序[1][2]。为什么需要它呢？因为前面负责召回的 Bi-Encoder 是两路独立编码的，它并不知道查询和文档放在一起到底是什么关系[1][2]。而 Cross-Encoder 虽然准，但速度慢，所以只用来精排 top-k，比如 bge-reranker 这类模型[2]。典型的效果就是，原本真正相关的内容可能排在 Top-20 里的第 15 到 20 位，经过 Rerank 之后能提到第 1 到 3 位[1]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.5,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.0025675196645752077,
+      "faithfulness_n": 7,
+      "faithfulness_nli": 0.7142857142857143,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 2,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "二、RAG（检索增强生成）· 100 词🔥 核心必背（1–30）.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ag-01",
+      "group": "AI Agent",
+      "question": "什么是 AI Agent？它和普通的 LLM 有什么区别？",
+      "expected": [
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10272,
+      "error": null,
+      "answer": "AI Agent 就是智能体，可以把它理解成一个能感知环境、做决策、执行动作的软件系统[2]。它和普通 LLM 最大的区别在于，LLM 只是负责理解和生成文本，本身是无状态的文本生成器；而 Agent 是在循环中自主完成目标的智能系统，会持续观察、判断、执行，直到任务结束[2][3]。用一个公式来概括就是：Agent = LLM + Planning + Memory + Tools，也就是大模型当大脑，再加上规划能力、记忆系统和工具调用[1][2]。LLM 在 Agent 里负责理解用户意图、制定执行计划、推理下一步行动和生成最终回复，而规划模块负责任务分解和动态调整，记忆模块负责保存当前对话上下文、任务状态以及历史经验，工具模块则通过 Function Calling、MCP 等方式去调用外部 API、数据库、搜索引擎等[3]。打个比方，LLM 是有了大脑，Agent 是给大脑装上了手脚和记事本，能思考、能行动、能记忆[3]。",
+      "n_citations": 3,
+      "citation_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6666666666666666,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.7259421342208234,
+      "faithfulness_n": 7,
+      "faithfulness_nli": 0.8571428571428571,
+      "faithfulness_nli_labels": {
+        "entailment": 6,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ag-02",
+      "group": "AI Agent",
+      "question": "Agent 的短期记忆和长期记忆有什么区别？",
+      "expected": [
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9572,
+      "error": null,
+      "answer": "Agent 的记忆通常分两层。短期记忆是 Session 级的，服务当前任务，一般就是上下文历史、会话记录、工具结果和中间状态，用来保持对话连续性，解决的是“刚才说过什么”这个问题[1][3]。长期记忆则是跨 Session 的、持久化的，通常放在外部知识库，比如向量数据库或知识图谱里，负责沉淀用户偏好、历史决策、过往经验这些需要跨会话复用的信息，解决的是“过去积累了什么”[1][3]。两者在物理和逻辑上都应该分开，不要混在一起[3]。另外，长期记忆和 RAG 技术上很像，都会用到向量库和语义检索，但服务对象不一样：RAG 挂载的是可检索的外部知识源，而长期记忆管理的是 Agent 与特定用户交互中动态沉淀的个性化经验[2]。",
+      "n_citations": 5,
+      "citation_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.4,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.8,
+      "faithfulness_proxy": 0.3498481229365971,
+      "faithfulness_n": 6,
+      "faithfulness_nli": 0.8333333333333334,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 0.0,
+      "hit@5": 1.0,
+      "mrr": 0.25,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ag-03",
+      "group": "AI Agent",
+      "question": "什么是 ReAct？它的核心思想是什么？",
+      "expected": [
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 10148,
+      "error": null,
+      "answer": "ReAct 是 Reasoning 加 Acting 的缩写，也就是推理与行动交替进行，由 Shunyu Yao 等人在 2022 年提出[2][3]。它的核心思想是“边想边做”，让模型先推理一步，拿到外部环境的反馈，再根据这个真实结果推理下一步，如此交替循环[1][3]。具体来说，它会先产生一个 Thought 想法，然后执行一个 Action 动作，接着拿到 Observation 观察结果，再基于这个结果继续下一步的思考和行动，直到能给出最终答案[2]。这样做的好处是每一步都基于上一步的真实结果来决策，而不是靠猜测，思路清晰可追踪，遇到工具失败等意外情况也能动态调整策略，同时因为有真实的观察结果作依据，幻觉会更少[2]。它特别适合探索性任务和不确定性高的环境，不过因为每一步都要推理，Token 消耗会比较高[1]。落地时一般需要历史上下文、实时环境输入、LLM 推理模块、工具集与技能库以及反馈观察机制这几个组件配合[3]。",
+      "n_citations": 3,
+      "citation_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6666666666666666,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.1378163715901874,
+      "faithfulness_n": 8,
+      "faithfulness_nli": 0.75,
+      "faithfulness_nli_labels": {
+        "entailment": 6,
+        "neutral": 1,
+        "contradiction": 1,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ag-04",
+      "group": "AI Agent",
+      "question": "什么是 Plan-and-Execute 模式？",
+      "expected": [
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9956,
+      "error": null,
+      "answer": "Plan-and-Execute 是 LangChain 团队在 2023 年提出的一种 Agent 模式[1]。它的核心思路是先规划、后执行：先让 LLM 制定一个完整的全局分步计划，再由执行器按步骤逐步完成[1][2]。如果某一步失败了，就只重新规划这一步以及后面的步骤，等所有步骤都完成，再输出最终结果[2]。\n\n这种模式的好处是，它能让 Agent 先看到完整的“地图”再走路，有全局视角，Token 效率也比较高，因为不需要每一步都去推理“下一步做什么”，而且执行过程可预测，步骤是提前定好的[2]。它适合步骤多、依赖关系明确的长期任务，相比 ReAct 那种边想边做的方式，更不容易在长任务里迷路[1]。\n\n不过它的缺点也很明显：计划是基于有限信息做出来的，可能不够准确；灵活性差，环境变化后原来的计划可能就不适用了；而且初始规划本身也要消耗 Token，大任务规划可能花掉几千 Token[2]。另外，计划一旦定下来，执行过程中的动态调整和容错会比较弱，更接近静态工作流[1]。所以实际项目里，Plan-and-Execute 和 ReAct 这两种模式是可以组合使用的[1]。",
+      "n_citations": 4,
+      "citation_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.75,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.21540016735195033,
+      "faithfulness_n": 9,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 9,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "empty_retrieval": false
+    },
+    {
+      "id": "ag-05",
+      "group": "AI Agent",
+      "question": "Agent 是如何调用外部工具的？",
+      "expected": [
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9544,
+      "error": null,
+      "answer": "Agent 调用外部工具靠的是一套“工具调用”机制，它是 Agent 连接外部世界的桥梁[1]。具体流程是这样的：先定义好工具，包括名称、描述和参数的 Schema；然后由大模型判断该调用哪个工具，并输出结构化的调用指令，通常是 JSON 格式；接着应用程序解析这条指令，去执行真正的调用；执行完之后，把工具返回的结果再反馈给大模型；最后大模型基于这个结果继续推理，或者生成最终回复[1]。这里有个关键点，就是大模型本身并不执行工具，它只是输出“我想调用什么工具、传什么参数”，实际的执行是由应用程序来完成的，这样能保证安全性[1]。工具执行后返回的结果会被放回上下文，再进入下一轮推理，这个反馈闭环就是观察，也是 Agent Loop 能转起来的关键[3]。可以说，工具调用让 Agent 从“纸上谈兵”变成了“真刀真枪”，能查数据库、调 API、发邮件，而不只是生成文本[1]。",
+      "n_citations": 4,
+      "citation_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.5,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.2948809874546993,
+      "faithfulness_n": 5,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "co-01",
+      "group": "AI 核心概念",
+      "question": "什么是 Token？为什么不直接按字或按词切分？",
+      "expected": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9483,
+      "error": null,
+      "answer": "Token 可以理解成模型的“阅读单位”，它既不按字也不按词来切，而是用一套自己的“拆字规则”，也就是 Tokenizer，把文本切成大小不等的碎片，每个碎片就是一个 Token[1]。之所以不直接按字或按词切，是因为模型要在“词表大小”和“序列长度”之间找平衡：如果每个汉字都是一个 Token，词表会很小，但序列会变得很长，模型要多走很多步；如果每个词都是一个 Token，序列虽然短了，但词表会爆炸，因为中文词组实在太多了[1]。所以实际用的是折中方案，也就是子词切分算法，比如 BPE、Unigram，高频词保留为整体，低频词拆成更小的片段[1]。你可以把 Token 想成乐高积木，常用的积木块比较大，比如“你好”可能就是一个 Token，不常用的词就会被拆成更小的基础块拼起来[1]。也正因为这样，Token 并不是“一个字”或“一个词”的严格等价物：英文一个单词可能被拆成多个 Token，中文一个词可能被拆成多个 Token，也可能多个字合并成一个 Token，这取决于词频和词表[1]。",
+      "n_citations": 1,
+      "citation_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.29766039317827364,
+      "faithfulness_n": 5,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 5,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "co-02",
+      "group": "AI 核心概念",
+      "question": "什么是 MCP？它解决了什么问题？",
+      "expected": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9570,
+      "error": null,
+      "answer": "MCP 全称是 Model Context Protocol，中文一般叫“模型上下文协议”，是 Anthropic 提出的一套让 AI 模型和外部工具、数据源之间通信的标准协议[1][3]。拆开看就是：Model 面向大模型应用，Context 负责把外部上下文、工具和数据源带给模型，Protocol 则是用一套标准把交互方式定下来[3]。它更准确的理解是 MCP Client 和 MCP Server 之间的通信协议，Host 负责承载用户交互和模型调用，Client 负责和 Server 说话，Server 负责把具体能力暴露出来[3]。\n\n它解决的核心问题是 N×M 集成爆炸：传统方式下，每个 AI 应用都要为每个外部系统单独写一套集成代码，N 个应用乘以 M 个工具就是 N×M 套；有了 MCP 这个统一协议，所有应用和工具通过同一接口通信，就变成了 N+M[1]。所以 MCP 之于 AI 工具，就像 USB 协议之于外设——统一接口，即插即用[1]。另外要区分一下，Function Calling 解决的是模型怎么表达自己想调工具，而 MCP 解决的是这个工具从哪里来、怎么被宿主发现、怎么真正连到后端服务[2]。",
+      "n_citations": 3,
+      "citation_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.6666666666666666,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.5160623853777386,
+      "faithfulness_n": 7,
+      "faithfulness_nli": 0.8571428571428571,
+      "faithfulness_nli_labels": {
+        "entailment": 6,
+        "neutral": 1,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "03-AI-Agent系列-面试题及答案.docx",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "empty_retrieval": false
+    },
+    {
+      "id": "co-03",
+      "group": "AI 核心概念",
+      "question": "什么是 Skills？",
+      "expected": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9909,
+      "error": null,
+      "answer": "Skills 可以理解成把那些原本散落在文档里、或者靠人反复提醒的规矩，写进一个叫 SKILL.md 的文件里，交给 Agent 在合适的任务中调用，所以它并不是什么神秘的新能力，更像是把老员工脑子里的经验固定下来[1]。它也不是 Prompt、MCP 或 Function Calling 的替代品，它们不在同一个层面，比如用户说“帮我分析这份报表”属于 Prompt，模型决定调用 read_file 并生成参数属于 Function Calling，read_file 这个能力如果来自 MCP Server 那 MCP 负责连接和协议，而“分析报表时先看字段含义，再看异常值，最后给业务结论，不要直接堆统计指标”这类内容才是适合放进 Skill 的[1]。另外，Skills 还能自进化，也就是 Agent 在使用过程中自动优化和改进 Skills，比如通过模式识别把重复的执行模式提炼成新 Skill，通过效果反馈记录成功率和 Token 效率来优化低效 Skill，通过参数调优改进默认参数和约束，以及通过版本管理保留旧版本用于回滚[2]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 0.5,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.38914840383647037,
+      "faithfulness_n": 3,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 3,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "AI 核心概念总览：LLM、Agent、RAG、MCP、Skills 与 ReAct.pdf",
+        "03-AI-Agent系列-面试题及答案.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "neg-01",
+      "group": "负样本",
+      "question": "今天上海的天气怎么样？",
+      "expected": [],
+      "expects_citation": false,
+      "gen_ms": 9033,
+      "error": null,
+      "answer": "我没办法直接告诉你今天上海的实时天气哦，因为我没法联网查最新的数据。不过你可以打开手机上的天气App，或者直接在网上搜“上海天气”就能看到实时的温度、有没有下雨这些信息啦。",
+      "n_citations": 0,
+      "citation_sources": [],
+      "retrieval_source": "citations",
+      "source_precision": null,
+      "citation_validity": null,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.0,
+      "faithfulness_proxy": null,
+      "faithfulness_n": 0,
+      "faithfulness_nli": null,
+      "faithfulness_nli_labels": null,
+      "negative_ok": true,
+      "hit_sources": [],
+      "hit@1": null,
+      "hit@3": null,
+      "hit@5": null,
+      "mrr": null,
+      "empty_retrieval": true
+    },
+    {
+      "id": "neg-02",
+      "group": "负样本",
+      "question": "学校食堂三楼今天中午供应哪些菜品？",
+      "expected": [],
+      "expects_citation": false,
+      "gen_ms": 9392,
+      "error": null,
+      "answer": "我今天没办法查到学校食堂三楼今天中午具体供应哪些菜品，因为每天的菜单都会根据采购和后厨安排变化，我这边也没有实时菜单信息。你可以去食堂门口看看公示栏，或者在学校后勤、食堂的公众号、小程序里查当天菜单，也可以直接问食堂工作人员，他们最清楚今天中午有什么菜。",
+      "n_citations": 0,
+      "citation_sources": [],
+      "retrieval_source": "citations",
+      "source_precision": null,
+      "citation_validity": null,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.0,
+      "faithfulness_proxy": null,
+      "faithfulness_n": 0,
+      "faithfulness_nli": null,
+      "faithfulness_nli_labels": null,
+      "negative_ok": true,
+      "hit_sources": [],
+      "hit@1": null,
+      "hit@3": null,
+      "hit@5": null,
+      "mrr": null,
+      "empty_retrieval": true
+    },
+    {
+      "id": "tl-01",
+      "group": "答案在尾部",
+      "question": "RRF（倒数排名融合）公式中的 k 一般取多少？为什么不用调权重参数？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9372,
+      "error": null,
+      "answer": "RRF公式里的k一般取60，它是个平滑参数[1]。之所以不用调权重参数，是因为加权求和需要先归一化分数，而向量相似度和BM25分数的尺度不一样，直接加权很难调；RRF只关心排名、不关心分数的绝对值，所以天然就能跨通道比较，只需要设一个k就够了，而且k取60在绝大多数场景都有效[1]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.9215853743962827,
+      "faithfulness_n": 2,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 2,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "tl-02",
+      "group": "答案在尾部",
+      "question": "100 万条 1024 维向量的数据量大约是多少？",
+      "expected": [
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9415,
+      "error": null,
+      "answer": "100 万条 1024 维的向量，按每条 4 字节算，纯向量数据大约是 4GB[1]。另外还要加上 Metadata，具体大小看字段多少，通常在 1 到 5GB 之间[1]。所以整体迁移的数据量大概就是向量加元数据这部分。",
+      "n_citations": 2,
+      "citation_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 0.6666666666666666,
+      "faithfulness_proxy": 0.007246417217194636,
+      "faithfulness_n": 2,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 2,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "02-RAG系列-面试题及答案.docx",
+        "02-RAG系列-面试题及答案.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "tl-03",
+      "group": "答案在尾部",
+      "question": "面试被问「你怎么看待跳槽」该怎么回答？",
+      "expected": [
+        "高频问题话术.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9204,
+      "error": null,
+      "answer": "关于跳槽这个问题，你可以这样来回答：跳槽在现在的职场里其实挺常见的，但我觉得如果能在同一个环境里锻炼和发展自己，就尽量别轻易动，因为俗话说三年行家、五年专家、十年领袖，讲的就是在自己的领域里专注下去，任何一个公司都会给你提升的平台，好好努力就好，而且跳槽穷半年、改行穷三年，这句话就是对跳槽这件事最好的诠释了[1]。另外，频繁跳槽对个人和企业的发展都是不利的，如果遇到工资瓶颈，我会先想想是不是自己还没在这个岗位上成为专家，所以工资没有质的突破；如果是工作上遇到了解决不了的问题，那更应该盯住问题、找到解决办法，而不是通过跳槽来逃避问题[1]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.007258498575125593,
+      "faithfulness_n": 2,
+      "faithfulness_nli": 0.0,
+      "faithfulness_nli_labels": {
+        "entailment": 0,
+        "neutral": 2,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "tl-04",
+      "group": "答案在尾部",
+      "question": "工作时，你认为领导要求的方式不是最好的，你会怎么做？",
+      "expected": [
+        "高频问题话术.docx"
+      ],
+      "expects_citation": true,
+      "gen_ms": 9586,
+      "error": null,
+      "answer": "如果我觉得领导要求的方式不是最好的，我会先尊重领导的要求并严格执行，因为每个人思维方式不同，领导这样要求肯定有他的道理，先执行，如果在执行过程中出现问题，再和领导私下沟通、交换意见，也就是先执行后反思[1]。同时，如果我认为自己有更好的方式，我会做两套方案，一套按领导要求的做，另一套按自己的想法做，都做好后拿给领导，哪个好哪个不好领导自然就能选出来[1]。另外，我也觉得为人处事要懂得换位思考，领导工作经验丰富，他这样要求肯定有合理的理由，自己经验尚浅，在没有完全理解领导要求的前提下就随意下结论，是自己不专业的表现，应该不断加强自身的学习[1]。",
+      "n_citations": 2,
+      "citation_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.0017521024710073095,
+      "faithfulness_n": 3,
+      "faithfulness_nli": 0.0,
+      "faithfulness_nli_labels": {
+        "entailment": 0,
+        "neutral": 3,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "高频问题话术.docx",
+        "高频问题话术.docx"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    },
+    {
+      "id": "tl-05",
+      "group": "答案在尾部",
+      "question": "BabyAGI/AutoGPT 这类自主任务系统的三个核心 Agent 分别是什么？",
+      "expected": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "expects_citation": true,
+      "gen_ms": 8784,
+      "error": null,
+      "answer": "BabyAGI 这类架构里会把任务拆给几个不同的 Agent 来协作，其中三个核心 Agent 分别是：task_creation_agent，负责根据目标生成新任务；execution_agent，负责执行当前任务；还有 prioritization_agent，负责对任务列表进行排序[1]。",
+      "n_citations": 1,
+      "citation_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "retrieval_source": "citations",
+      "source_precision": 1.0,
+      "citation_validity": 1.0,
+      "bad_refs": [],
+      "cited_sentence_ratio": 1.0,
+      "faithfulness_proxy": 0.8961288459080956,
+      "faithfulness_n": 1,
+      "faithfulness_nli": 1.0,
+      "faithfulness_nli_labels": {
+        "entailment": 1,
+        "neutral": 0,
+        "contradiction": 0,
+        "unknown": 0
+      },
+      "hit_sources": [
+        "大模型提示词工程（Prompt Engineering）是什么？提示词技巧有哪些？.pdf"
+      ],
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "empty_retrieval": false
+    }
+  ]
+}
